@@ -48,12 +48,10 @@ const TopBar = () => {
     return () => clearTimeout(delayDebounceFn);
   }, [searchQuery]);
 
-  const handleUserClick = (userId: string) => {
+  const handleUserClick = (username: string) => {
     setSearchQuery('');
     setIsSearching(false);
-    // In a real app, we'd navigate to a specific user profile page
-    // For now, we'll just show the profile page
-    navigate('/profile');
+    navigate(`/profile/${username}`);
   };
 
   return (
@@ -88,7 +86,7 @@ const TopBar = () => {
                 {searchResults.map((user) => (
                   <button
                     key={user.id}
-                    onClick={() => handleUserClick(user.id)}
+                    onClick={() => handleUserClick(user.username)}
                     className="w-full flex items-center gap-3 p-3 hover:bg-white/5 rounded-xl transition-colors text-left"
                   >
                     <Avatar className="w-8 h-8 border border-white/10">

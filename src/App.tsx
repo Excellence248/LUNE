@@ -10,6 +10,7 @@ import Wallet from "./pages/Wallet";
 import Jobs from "./pages/Jobs";
 import Communities from "./pages/Communities";
 import Profile from "./pages/Profile";
+import UserProfile from "./pages/UserProfile";
 import Trade from "./pages/Trade";
 import DemoTrade from "./pages/DemoTrade";
 import NFTs from "./pages/NFTs";
@@ -70,6 +71,7 @@ const App = () => (
         <Route path="/jobs" element={<ProtectedRoute><Jobs /></ProtectedRoute>} />
         <Route path="/communities" element={<ProtectedRoute><Communities /></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+        <Route path="/profile/:username" element={<ProtectedRoute><UserProfile /></ProtectedRoute>} />
         <Route path="/trade/:symbol" element={<ProtectedRoute><Trade /></ProtectedRoute>} />
         <Route path="/demo-trade" element={<ProtectedRoute><DemoTrade /></ProtectedRoute>} />
         <Route path="/nfts" element={<ProtectedRoute><NFTs /></ProtectedRoute>} />
