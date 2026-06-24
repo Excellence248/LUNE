@@ -99,15 +99,16 @@ export const SocialProvider = ({ children }: { children: React.ReactNode }) => {
     fetchPosts();
     if (user) fetchFollowing();
 
-    const channel = supabase
-      .channel('public:posts')
-      .on('postgres_changes', { event: '*', table: 'posts' }, () => {
-        fetchPosts();
-      })
+    const postsChannel = supabase
+      .channel('public:social_updates')
+      .on('postgres_changes', { event: '*', table: 'posts' }, () => fetchPosts())
+      .on('postgres_changes', { event: '*', table: 'likes' }, () => fetchPosts())
+      .on('postgres_changes', { event: '*', table: 'reposts' }, () => fetchPosts())
+      .on('postgres_changes', { event: '*', table: 'replies' }, () => fetchPosts())
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(postsChannel);
     };
   }, [user]);
 
@@ -130,64 +131,105 @@ export const SocialProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const toggleLike = async (postId: string) => {
-    if (!user) return;
+    if (!user) {
+      showError("Please connect your wallet to like posts.");
+      return;
+    }
     const post = posts.find(p => p.id === postId);
     const isLiked = post?.likes.some(l => l.user_id === user.id);
 
-    if (isLiked) {
-      await supabase.from('likes').delete().eq('post_id', postId).eq('user_id', user.id);
-    } else {
-      await supabase.from('likes').insert([{ post_id: postId, user_id: user.id }]);
+    try {
+      if (isLiked) {
+        const { error } = await supabase.from('likes').delete().eq('post_id', postId).eq('user_id', user.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('likes').insert([{ post_id: postId, user_id: user.id }]);
+        if (error) throw error;
+      }
+      fetchPosts();
+    } catch (err) {
+      console.error("Error toggling like:", err);
+      showError("Failed to update like.");
     }
-    fetchPosts();
   };
 
   const toggleRepost = async (postId: string) => {
-    if (!user) return;
+    if (!user) {
+      showError("Please connect your wallet to repost.");
+      return;
+    }
     const post = posts.find(p => p.id === postId);
     const isReposted = post?.reposts.some(r => r.user_id === user.id);
 
-    if (isReposted) {
-      await supabase.from('reposts').delete().eq('post_id', postId).eq('user_id', user.id);
-    } else {
-      await supabase.from('reposts').insert([{ post_id: postId, user_id: user.id }]);
+    try {
+      if (isReposted) {
+        const { error } = await supabase.from('reposts').delete().eq('post_id', postId).eq('user_id', user.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('reposts').insert([{ post_id: postId, user_id: user.id }]);
+        if (error) throw error;
+      }
+      fetchPosts();
+    } catch (err) {
+      console.error("Error toggling repost:", err);
+      showError("Failed to update repost.");
     }
-    fetchPosts();
   };
 
   const addComment = async (postId: string, content: string) => {
-    if (!user) return;
-    const { error } = await supabase
-      .from('replies')
-      .insert([{ post_id: postId, user_id: user.id, content }]);
+    if (!user) {
+      showError("Please connect your wallet to reply.");
+      return;
+    }
+    try {
+      const { error } = await supabase
+        .from('replies')
+        .insert([{ post_id: postId, user_id: user.id, content }]);
 
-    if (error) showError("Failed to reply.");
-    else fetchPosts();
+      if (error) throw error;
+      showSuccess("Reply posted!");
+      fetchPosts();
+    } catch (err) {
+      console.error("Error adding comment:", err);
+      showError("Failed to reply.");
+    }
   };
 
   const followUser = async (userId: string) => {
-    if (!user || userId === user.id) return;
-    const { error } = await supabase
-      .from('follows')
-      .insert([{ follower_id: user.id, following_id: userId }]);
+    if (!user) {
+      showError("Please connect your wallet to follow users.");
+      return;
+    }
+    if (userId === user.id) return;
+    try {
+      const { error } = await supabase
+        .from('follows')
+        .insert([{ follower_id: user.id, following_id: userId }]);
 
-    if (!error) {
+      if (error) throw error;
       setFollowing(prev => [...prev, userId]);
       showSuccess("Following user!");
+    } catch (err) {
+      console.error("Error following user:", err);
+      showError("Failed to follow user.");
     }
   };
 
   const unfollowUser = async (userId: string) => {
     if (!user) return;
-    const { error } = await supabase
-      .from('follows')
-      .delete()
-      .eq('follower_id', user.id)
-      .eq('following_id', userId);
+    try {
+      const { error } = await supabase
+        .from('follows')
+        .delete()
+        .eq('follower_id', user.id)
+        .eq('following_id', userId);
 
-    if (!error) {
+      if (error) throw error;
       setFollowing(prev => prev.filter(id => id !== userId));
       showSuccess("Unfollowed user.");
+    } catch (err) {
+      console.error("Error unfollowing user:", err);
+      showError("Failed to unfollow user.");
     }
   };
 
