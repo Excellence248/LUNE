@@ -136,7 +136,7 @@ const UserProfile = () => {
             <h3 className="text-xl font-bold mb-6">Alpha Posts</h3>
             <div className="divide-y divide-white/5">
               {userPosts.length > 0 ? (
-                userPosts.map((post) => <FeedCard key={post.id} {...post} />)
+                userPosts.map((post) => <FeedCard key={post.id} post={post} />)
               ) : (
                 <p className="text-gray-500 py-8 text-center">No posts yet.</p>
               )}

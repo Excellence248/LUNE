@@ -3,27 +3,46 @@
 import React, { useState } from 'react';
 import Layout from '@/components/lune/Layout';
 import FeedCard from '@/components/lune/FeedCard';
-import { Shield, Zap, Copy, ExternalLink, Twitter, Globe, Award, Users, Edit3 } from 'lucide-react';
+import { Shield, Edit3 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useWallet } from '@/context/WalletContext';
 import { useSocial } from '@/context/SocialContext';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { showSuccess } from '@/utils/toast';
+import { showSuccess, showError } from '@/utils/toast';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 const Profile = () => {
   const { user, updateProfile } = useWallet();
   const { posts } = useSocial();
-  const [editData, setEditData] = useState({ username: user?.username || '', bio: user?.bio || '' });
+  const [loading, setLoading] = useState(false);
+  const [editData, setEditData] = useState({ 
+    username: user?.username || '', 
+    bio: user?.bio || '' 
+  });
 
-  const handleSave = () => {
-    updateProfile(editData);
-    showSuccess("Profile updated!");
+  const handleSave = async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      await updateProfile(editData);
+      showSuccess("Profile updated!");
+    } catch (error) {
+      showError("Failed to update profile");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const userPosts = posts.filter(p => p.user.handle === `@${user?.username || user?.email.split('@')[0]}`);
+  // Corrected filtering logic to use user_id
+  const userPosts = posts.filter(p => p.user_id === user?.id);
 
   return (
     <Layout noPadding>
@@ -35,7 +54,10 @@ const Profile = () => {
       <div className="px-4 md:px-8 -mt-16 md:-mt-20 relative z-10 max-w-4xl">
         <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
           <Avatar className="w-32 h-32 md:w-40 md:h-40 border-8 border-[#050505] rounded-[2.5rem] shadow-2xl">
-            <AvatarFallback className="bg-purple-600 text-4xl font-bold">{user?.username?.[0] || 'U'}</AvatarFallback>
+            <AvatarImage src={user?.avatar} />
+            <AvatarFallback className="bg-purple-600 text-4xl font-bold">
+              {user?.username?.[0] || user?.email?.[0] || 'U'}
+            </AvatarFallback>
           </Avatar>
           
           <div className="flex gap-3 pb-4">
@@ -63,10 +85,16 @@ const Profile = () => {
                     <textarea 
                       value={editData.bio} 
                       onChange={e => setEditData({...editData, bio: e.target.value})}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl p-3 h-24 focus:outline-none"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl p-3 h-24 focus:outline-none text-white"
                     />
                   </div>
-                  <Button onClick={handleSave} className="w-full bg-purple-600 hover:bg-purple-500">Save Changes</Button>
+                  <Button 
+                    onClick={handleSave} 
+                    disabled={loading}
+                    className="w-full bg-purple-600 hover:bg-purple-500"
+                  >
+                    {loading ? "Saving..." : "Save Changes"}
+                  </Button>
                 </div>
               </DialogContent>
             </Dialog>
@@ -83,7 +111,7 @@ const Profile = () => {
           </div>
 
           <p className="text-gray-300 text-lg leading-relaxed max-w-2xl">
-            {user?.bio}
+            {user?.bio || "No bio set yet."}
           </p>
 
           <div className="grid grid-cols-3 gap-8 py-6 border-y border-white/5">
@@ -105,7 +133,7 @@ const Profile = () => {
             <h3 className="text-xl font-bold mb-6">Your Alpha</h3>
             <div className="divide-y divide-white/5">
               {userPosts.length > 0 ? (
-                userPosts.map((post) => <FeedCard key={post.id} {...post} />)
+                userPosts.map((post) => <FeedCard key={post.id} post={post} />)
               ) : (
                 <p className="text-gray-500 py-8 text-center">No posts yet. Share some alpha!</p>
               )}
