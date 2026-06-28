@@ -3,42 +3,27 @@
 import React, { useState } from 'react';
 import Layout from '@/components/lune/Layout';
 import FeedCard from '@/components/lune/FeedCard';
-import { Shield, Edit3 } from 'lucide-react';
+import { Shield, Zap, Copy, ExternalLink, Twitter, Globe, Award, Users, Edit3 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useWallet } from '@/context/WalletContext';
 import { useSocial } from '@/context/SocialContext';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { showSuccess, showError } from '@/utils/toast';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { showSuccess } from '@/utils/toast';
 
 const Profile = () => {
   const { user, updateProfile } = useWallet();
   const { posts } = useSocial();
-  const [loading, setLoading] = useState(false);
   const [editData, setEditData] = useState({ 
     username: user?.username || '', 
     bio: user?.bio || '' 
   });
 
-  const handleSave = async () => {
-    if (!user) return;
-    setLoading(true);
-    try {
-      await updateProfile(editData);
-      showSuccess("Profile updated!");
-    } catch (error) {
-      showError("Failed to update profile");
-    } finally {
-      setLoading(false);
-    }
+  const handleSave = () => {
+    updateProfile(editData);
+    showSuccess("Profile updated!");
   };
 
   // Corrected filtering logic to use user_id
@@ -88,13 +73,7 @@ const Profile = () => {
                       className="w-full bg-white/5 border border-white/10 rounded-xl p-3 h-24 focus:outline-none text-white"
                     />
                   </div>
-                  <Button 
-                    onClick={handleSave} 
-                    disabled={loading}
-                    className="w-full bg-purple-600 hover:bg-purple-500"
-                  >
-                    {loading ? "Saving..." : "Save Changes"}
-                  </Button>
+                  <Button onClick={handleSave} className="w-full bg-purple-600 hover:bg-purple-500">Save Changes</Button>
                 </div>
               </DialogContent>
             </Dialog>
@@ -133,7 +112,7 @@ const Profile = () => {
             <h3 className="text-xl font-bold mb-6">Your Alpha</h3>
             <div className="divide-y divide-white/5">
               {userPosts.length > 0 ? (
-                userPosts.map((post) => <FeedCard key={post.id} post={post} />)
+                userPosts.map((post) => <FeedCard key={post.id} {...post} />)
               ) : (
                 <p className="text-gray-500 py-8 text-center">No posts yet. Share some alpha!</p>
               )}

@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import Layout from '@/components/lune/Layout';
 import FeedCard from '@/components/lune/FeedCard';
 import CreatePost from '@/components/lune/CreatePost';
@@ -37,7 +36,7 @@ const Index = () => {
             className="p-2 hover:bg-white/5 rounded-xl transition-all text-purple-400 disabled:opacity-50"
           >
             {isRefreshing ? (
-              <Loader2 className="animate-spin" />
+              <Loader2 size={20} className="animate-spin" />
             ) : (
               <RefreshCw size={20} />
             )}
@@ -83,7 +82,7 @@ const Index = () => {
           className="divide-y divide-white/5"
         >
           {posts.map((post) => (
-            <FeedCard key={post.id} post={post} />
+            <FeedCard key={post.id} {...post} />
           ))}
         </motion.div>
 

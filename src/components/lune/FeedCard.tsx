@@ -7,24 +7,24 @@ import { cn } from '@/lib/utils';
 import TipModal from './TipModal';
 import { useSocial, Post } from '@/context/SocialContext';
 import { useWallet } from '@/context/WalletContext';
+import { Button } from '@/components/ui/button';
 import { formatDistanceToNow } from 'date-fns';
 
-const FeedCard = ({ post }: { post: Post }) => {
+const FeedCard = (post: Post) => {
   const { user: currentUser } = useWallet();
   const { toggleLike, toggleRepost, addComment, followUser, unfollowUser, isFollowing } = useSocial();
   const [isTipOpen, setIsTipOpen] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [commentInput, setCommentInput] = useState('');
 
-  const isLiked = currentUser ? post.likes?.some(l => l.user_id === currentUser.id) : false;
-  const isReposted = currentUser ? post.reposts?.some(r => r.user_id === currentUser.id) : false;
+  const isLiked = currentUser ? post.likes.some(l => l.user_id === currentUser.id) : false;
+  const isReposted = currentUser ? post.reposts.some(r => r.user_id === currentUser.id) : false;
   const following = isFollowing(post.user_id);
   const isOwnPost = currentUser?.id === post.user_id;
 
   const handleComment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!commentInput.trim()) return;
-    if (!currentUser) return;
     addComment(post.id, commentInput);
     setCommentInput('');
   };
@@ -68,7 +68,7 @@ const FeedCard = ({ post }: { post: Post }) => {
           </div>
 
           <p className="text-gray-300 text-sm md:text-base leading-relaxed mb-3 whitespace-pre-wrap break-words">
-            {post.post_type === 'repost' && post.repost_content ? post.repost_content : post.content}
+            {post.content}
           </p>
 
           <div className="flex items-center justify-between max-w-md text-gray-500 -ml-2">
@@ -76,7 +76,9 @@ const FeedCard = ({ post }: { post: Post }) => {
               onClick={() => setShowComments(!showComments)}
               className="flex items-center gap-1.5 hover:text-blue-400 transition-colors group/btn"
             >
-              <MessageSquare size={16} />
+              <div className="p-2 rounded-full group-hover/btn:bg-blue-400/10">
+                <MessageSquare size={16} />
+              </div>
               <span className="text-xs">{post.replies?.length || 0}</span>
             </button>
             <button 
@@ -156,17 +158,10 @@ const FeedCard = ({ post }: { post: Post }) => {
         </div>
       </div>
 
-      {/* Repost badge for current user */}
-      {currentUser && post.reposted_by_current_user && (
-        <div className="absolute -top-2 -right-2 rounded-full bg-purple-500/50 text-[10px] font-bold text-white">
-          🔁
-        </div>
-      )}
-
       <TipModal 
         isOpen={isTipOpen} 
         onClose={() => setIsTipOpen(false)} 
-        recipient={post.post_type === 'repost' ? post.repost_username : post.profiles?.username || 'Anonymous'} 
+        recipient={post.profiles?.username || 'Anonymous'} 
       />
     </div>
   );
