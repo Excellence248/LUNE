@@ -39,7 +39,12 @@ const Messages = () => {
       if (!error && data) {
         const uniqueChats = new Map();
         data.forEach(msg => {
-          const otherUser = msg.sender_id === currentUser.id ? msg.receiver : msg.sender;
+          // Supabase returns joined data as objects, not arrays
+          const sender = msg.sender;
+          const receiver = msg.receiver;
+          
+          const otherUser = msg.sender_id === currentUser.id ? receiver : sender;
+          
           if (otherUser && !uniqueChats.has(otherUser.id)) {
             uniqueChats.set(otherUser.id, {
               id: otherUser.id,
@@ -67,7 +72,7 @@ const Messages = () => {
       
       const channel = supabase
         .channel(`messages:${selectedChat.id}`)
-        .on('postgres_changes', { 
+        .on('postgres_changes' as any, { 
           event: 'INSERT', 
           table: 'messages',
         }, () => {
@@ -85,14 +90,16 @@ const Messages = () => {
       if (searchQuery.trim()) {
         setIsSearching(true);
         const results = await searchUsers(searchQuery);
-        setSearchResults(results.filter(u => u.id !== currentUser?.id));
+        // Filter out current user from search results
+        const filteredResults = results.filter((u: any) => u.id !== currentUser?.id);
+        setSearchResults(filteredResults);
         setIsSearching(false);
       } else {
         setSearchResults([]);
       }
     }, 300);
     return () => clearTimeout(delayDebounceFn);
-  }, [searchQuery]);
+  }, [searchQuery, currentUser]);
 
   const handleSend = async () => {
     if (!input.trim() || !selectedChat) return;
@@ -129,7 +136,7 @@ const Messages = () => {
             {searchQuery.trim() ? (
               <div className="space-y-1">
                 <p className="text-[10px] font-bold text-gray-500 uppercase px-4 py-2">Search Results</p>
-                {searchResults.map((user) => (
+                {searchResults.map((user: any) => (
                   <div 
                     key={user.id} 
                     onClick={() => { setSelectedChat(user); setSearchQuery(''); }}
@@ -152,14 +159,14 @@ const Messages = () => {
             ) : (
               <div className="space-y-1">
                 <p className="text-[10px] font-bold text-gray-500 uppercase px-4 py-2">Recent Chats</p>
-                {recentChats.map((chat) => (
+                {recentChats.map((chat: any) => (
                   <div 
                     key={chat.id} 
                     onClick={() => setSelectedChat(chat)}
                     className={cn(
                       "p-4 rounded-2xl flex items-center gap-4 cursor-pointer transition-all",
                       selectedChat?.id === chat.id ? 'bg-white/10' : 'hover:bg-white/5'
-                    )}
+                    )}  
                   >
                     <Avatar className="w-12 h-12 border border-white/10">
                       <AvatarImage src={chat.avatar_url} />
@@ -206,7 +213,7 @@ const Messages = () => {
               </div>
 
               <div className="flex-1 p-8 overflow-y-auto space-y-6 custom-scrollbar">
-                {(messages[selectedChat.id] || []).map((msg) => {
+                {(messages[selectedChat.id] || []).map((msg: any) => {
                   const isMe = msg.sender_id === currentUser?.id;
                   return (
                     <div key={msg.id} className={cn("flex gap-4 max-w-lg", isMe ? "ml-auto flex-row-reverse" : "")}>

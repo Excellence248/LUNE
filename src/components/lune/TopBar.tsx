@@ -16,7 +16,7 @@ const TopBar = () => {
   const navigate = useNavigate();
   const [isWalletOpen, setIsWalletOpen] = useState(false);
   const { isConnected, address, disconnect } = useWallet();
-  const { searchUsers } = useSocial();
+  const { searchUsers, unreadCount } = useSocial();
   
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -46,7 +46,7 @@ const TopBar = () => {
     }, 300);
 
     return () => clearTimeout(delayDebounceFn);
-  }, [searchQuery]);
+  }, [searchQuery, searchUsers]);
 
   const handleUserClick = (username: string) => {
     setSearchQuery('');
@@ -112,9 +112,14 @@ const TopBar = () => {
       </div>
 
       <div className="flex items-center gap-2 lg:gap-6">
-        <button className="relative p-2 text-gray-400 hover:text-white transition-colors shrink-0">
+        <button 
+          onClick={() => navigate('/notifications')}
+          className="relative p-2 text-gray-400 hover:text-white transition-colors shrink-0"
+        >
           <Bell size={18} />
-          <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-purple-500 rounded-full border border-[#050505]" />
+          {unreadCount > 0 && (
+            <span className="absolute top-2 right-2 w-2 h-2 bg-purple-500 rounded-full border border-[#050505] animate-pulse" />
+          )}
         </button>
 
         <div className="h-6 w-[1px] bg-white/10 hidden xs:block" />

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Zap, Mail, User, Lock, ShieldCheck, Loader2, RefreshCw, Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
 
 const SignUp = () => {
   const navigate = useNavigate();
-  const { signUp, resendVerificationEmail } = useWallet();
+  const { signUp, resendVerificationEmail, isAuthenticated } = useWallet();
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -23,6 +23,12 @@ const SignUp = () => {
     email: '',
     password: ''
   });
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   const passwordRequirements = useMemo(() => [
     { label: 'At least 8 characters', test: (p: string) => p.length >= 8 },

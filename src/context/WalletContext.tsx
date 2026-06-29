@@ -71,9 +71,6 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
             bio: sbUser.user_metadata?.bio || "New to Lune Protocol! 🚀",
           }
         ]);
-      } else if (!profile.username && username) {
-        // Update if username is missing for some reason
-        await supabase.from('profiles').update({ username }).eq('id', sbUser.id);
       }
     } catch (err) {
       console.error("Error ensuring profile exists:", err);
@@ -81,33 +78,46 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
+    // Load balance from local storage
     const savedBalance = localStorage.getItem('lune_balance');
-    if (savedBalance) setBalance(parseFloat(savedBalance));
+    if (savedBalance) {
+      setBalance(parseFloat(savedBalance));
+    } else {
+      const initialBalance = 48000.00;
+      setBalance(initialBalance);
+      localStorage.setItem('lune_balance', initialBalance.toString());
+    }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        const currentUser = mapSupabaseUser(session.user);
-        setUser(currentUser);
-        setAddress(currentUser.email);
-        setIsConnected(true);
-        ensureProfileExists(session.user);
-        
-        if (!savedBalance) {
-          const initialBalance = 48000.00;
-          setBalance(initialBalance);
-          localStorage.setItem('lune_balance', initialBalance.toString());
+    // Initial session check
+    const initAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const currentUser = mapSupabaseUser(session.user);
+          setUser(currentUser);
+          setAddress(currentUser.email);
+          setIsConnected(true);
+          await ensureProfileExists(session.user);
         }
+      } catch (error) {
+        console.error("Auth initialization error:", error);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
-    });
+    };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    initAuth();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
         const currentUser = mapSupabaseUser(session.user);
         setUser(currentUser);
         setAddress(currentUser.email);
         setIsConnected(true);
-        ensureProfileExists(session.user);
+        if (event === 'SIGNED_IN') {
+          await ensureProfileExists(session.user);
+        }
       } else {
         setUser(null);
         setAddress(null);
@@ -120,21 +130,26 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const updateBalance = (amount: number) => {
-    const newBalance = balance + amount;
-    setBalance(newBalance);
-    localStorage.setItem('lune_balance', newBalance.toString());
+    setBalance(prev => {
+      const newBalance = prev + amount;
+      localStorage.setItem('lune_balance', newBalance.toString());
+      return newBalance;
+    });
   };
 
   const signIn = async (email: string, password?: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
+    setLoading(true);
+    const result = await supabase.auth.signInWithPassword({
       email,
       password: password || '',
     });
-    return { error };
+    if (result.error) setLoading(false);
+    return result;
   };
 
   const signUp = async (email: string, password: string, username: string) => {
-    const { data, error } = await supabase.auth.signUp({
+    setLoading(true);
+    const result = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -145,48 +160,49 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
         }
       }
     });
-    return { error };
+    if (result.error) setLoading(false);
+    return result;
   };
 
   const signInWithOtp = async (email: string) => {
-    const { error } = await supabase.auth.signInWithOtp({
+    setLoading(true);
+    const result = await supabase.auth.signInWithOtp({
       email,
       options: {
         emailRedirectTo: `${window.location.origin}/signin`,
       }
     });
-    return { error };
+    if (result.error) setLoading(false);
+    return result;
   };
 
   const verifyOtp = async (email: string, token: string) => {
-    const { error } = await supabase.auth.verifyOtp({
+    setLoading(true);
+    const result = await supabase.auth.verifyOtp({
       email,
       token,
       type: 'magiclink'
     });
-    return { error };
+    if (result.error) setLoading(false);
+    return result;
   };
 
   const resetPassword = async (email: string) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    return await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/settings`,
     });
-    return { error };
   };
 
   const updateEmail = async (newEmail: string) => {
-    const { error } = await supabase.auth.updateUser({ email: newEmail });
-    return { error };
+    return await supabase.auth.updateUser({ email: newEmail });
   };
 
   const updatePassword = async (newPassword: string) => {
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    return { error };
+    return await supabase.auth.updateUser({ password: newPassword });
   };
 
   const reauthenticate = async () => {
-    const { error } = await supabase.auth.reauthenticate();
-    return { error };
+    return await supabase.auth.reauthenticate();
   };
 
   const deleteAccount = async () => {
@@ -195,14 +211,13 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const resendVerificationEmail = async (email: string) => {
-    const { data, error } = await supabase.auth.resend({
+    return await supabase.auth.resend({
       type: 'signup',
       email,
       options: {
         emailRedirectTo: `${window.location.origin}/signin`,
       }
     });
-    return { error };
   };
 
   const updateProfile = async (data: Partial<User>) => {
@@ -230,6 +245,8 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   const disconnect = async () => {
     await supabase.auth.signOut();
     setIsConnected(false);
+    setUser(null);
+    setAddress(null);
   };
 
   return (

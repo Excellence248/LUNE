@@ -15,7 +15,7 @@ const UserProfile = () => {
   const { username } = useParams();
   const navigate = useNavigate();
   const { user: currentUser } = useWallet();
-  const { isFollowing, followUser, unfollowUser } = useSocial();
+  const { isFollowing, followUser, unfollowUser, getProfileByUsername } = useSocial();
   
   const [profile, setProfile] = useState<any>(null);
   const [userPosts, setUserPosts] = useState<Post[]>([]);
@@ -26,13 +26,9 @@ const UserProfile = () => {
       if (!username) return;
       setLoading(true);
       
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('username', username)
-        .single();
+      const profileData = await getProfileByUsername(username);
 
-      if (profileError || !profileData) {
+      if (!profileData) {
         setLoading(false);
         return;
       }
@@ -59,7 +55,7 @@ const UserProfile = () => {
     };
 
     fetchUserData();
-  }, [username]);
+  }, [username, getProfileByUsername]);
 
   if (loading) {
     return (
@@ -136,7 +132,7 @@ const UserProfile = () => {
             <h3 className="text-xl font-bold mb-6">Alpha Posts</h3>
             <div className="divide-y divide-white/5">
               {userPosts.length > 0 ? (
-                userPosts.map((post) => <FeedCard key={post.id} {...post} />)
+                userPosts.map((post) => <FeedCard key={post.id} post={post} />)
               ) : (
                 <p className="text-gray-500 py-8 text-center">No posts yet.</p>
               )}

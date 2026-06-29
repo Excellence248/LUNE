@@ -1,54 +1,86 @@
 "use client";
 
 import React, { useState } from 'react';
-import { MessageSquare, Repeat2, Heart, Share2, MoreHorizontal, DollarSign, Send, UserPlus, UserMinus } from 'lucide-react';
+import { MessageSquare, Repeat2, Heart, Share2, MoreHorizontal, DollarSign, Send } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import TipModal from './TipModal';
 import { useSocial, Post } from '@/context/SocialContext';
 import { useWallet } from '@/context/WalletContext';
-import { Button } from '@/components/ui/button';
 import { formatDistanceToNow } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
 
-const FeedCard = (post: Post) => {
+interface FeedCardProps {
+  post: Post & { repostedBy?: string };
+}
+
+const FeedCard = ({ post }: FeedCardProps) => {
+  const navigate = useNavigate();
   const { user: currentUser } = useWallet();
   const { toggleLike, toggleRepost, addComment, followUser, unfollowUser, isFollowing } = useSocial();
   const [isTipOpen, setIsTipOpen] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [commentInput, setCommentInput] = useState('');
 
-  const isLiked = currentUser ? post.likes.some(l => l.user_id === currentUser.id) : false;
-  const isReposted = currentUser ? post.reposts.some(r => r.user_id === currentUser.id) : false;
+  const isLiked = currentUser ? post.likes?.some(l => l.user_id === currentUser.id) : false;
+  const isReposted = currentUser ? post.reposts?.some(r => r.user_id === currentUser.id) : false;
   const following = isFollowing(post.user_id);
   const isOwnPost = currentUser?.id === post.user_id;
 
   const handleComment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!commentInput.trim()) return;
+    if (!currentUser) return;
     addComment(post.id, commentInput);
     setCommentInput('');
   };
 
+  const navigateToProfile = (username?: string) => {
+    if (username) {
+      navigate(`/profile/${username}`);
+    }
+  };
+
+  const isRepost = post.post_type === 'repost';
+  const displayUsername = isRepost ? post.repost_username : post.profiles?.username;
+
   return (
     <div className="p-4 md:p-6 border-b border-white/5 hover:bg-white/[0.02] transition-colors group">
+      {/* Repost Header */}
+      {(post.repostedBy || (isRepost && post.profiles?.username)) && (
+        <div 
+          onClick={() => navigateToProfile(post.repostedBy || post.profiles?.username)}
+          className="flex items-center gap-2 mb-2 ml-8 text-[10px] font-bold text-gray-500 uppercase tracking-widest cursor-pointer hover:text-purple-400 transition-colors"
+        >
+          <Repeat2 size={12} />
+          <span>Reposted by {post.repostedBy || post.profiles?.username}</span>
+        </div>
+      )}
+      
       <div className="flex gap-3 md:gap-4">
-        <Avatar className="w-10 h-10 md:w-12 md:h-12 border border-white/10 shrink-0">
-          <AvatarImage src={post.profiles?.avatar_url} />
+        <Avatar 
+          onClick={() => navigateToProfile(displayUsername)}
+          className="w-10 h-10 md:w-12 md:h-12 border border-white/10 shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+        >
+          <AvatarImage src={isRepost ? undefined : post.profiles?.avatar_url} />
           <AvatarFallback className="bg-purple-900 text-purple-200 text-xs">
-            {post.profiles?.username?.[0] || 'U'}
+            {displayUsername?.[0] || 'U'}
           </AvatarFallback>
         </Avatar>
         
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-0.5">
             <div className="flex items-center gap-1.5 min-w-0">
-              <span className="font-bold text-white hover:underline cursor-pointer text-sm md:text-base truncate">
-                {post.profiles?.username || 'Anonymous'}
+              <span 
+                onClick={() => navigateToProfile(displayUsername)}
+                className="font-bold text-white hover:underline cursor-pointer text-sm md:text-base truncate"
+              >
+                {displayUsername || 'Anonymous'}
               </span>
               <span className="text-gray-600 text-xs shrink-0">
                 · {formatDistanceToNow(new Date(post.created_at))} ago
               </span>
-              {!isOwnPost && currentUser && (
+              {!isOwnPost && currentUser && !isRepost && (
                 <button 
                   onClick={() => following ? unfollowUser(post.user_id) : followUser(post.user_id)}
                   className={cn(
@@ -68,17 +100,21 @@ const FeedCard = (post: Post) => {
           </div>
 
           <p className="text-gray-300 text-sm md:text-base leading-relaxed mb-3 whitespace-pre-wrap break-words">
-            {post.content}
+            {isRepost && post.repost_content ? post.repost_content : post.content}
           </p>
+
+          {post.image_url && (
+            <div className="mt-2 mb-4 rounded-2xl overflow-hidden border border-white/10 max-w-2xl">
+              <img src={post.image_url} alt="Post content" className="w-full h-auto object-cover" />
+            </div>
+          )}
 
           <div className="flex items-center justify-between max-w-md text-gray-500 -ml-2">
             <button 
               onClick={() => setShowComments(!showComments)}
               className="flex items-center gap-1.5 hover:text-blue-400 transition-colors group/btn"
             >
-              <div className="p-2 rounded-full group-hover/btn:bg-blue-400/10">
-                <MessageSquare size={16} />
-              </div>
+              <MessageSquare size={16} />
               <span className="text-xs">{post.replies?.length || 0}</span>
             </button>
             <button 
@@ -124,14 +160,22 @@ const FeedCard = (post: Post) => {
             <div className="mt-4 space-y-4 border-t border-white/5 pt-4">
               {post.replies?.map((reply) => (
                 <div key={reply.id} className="flex gap-3">
-                  <Avatar className="w-8 h-8 border border-white/10 shrink-0">
+                  <Avatar 
+                    onClick={() => navigateToProfile(reply.profiles?.username)}
+                    className="w-8 h-8 border border-white/10 shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+                  >
                     <AvatarFallback className="bg-purple-900 text-[10px] text-purple-200">
                       {reply.profiles?.username?.[0] || 'U'}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
-                      <span className="font-bold text-white text-xs">{reply.profiles?.username}</span>
+                      <span 
+                        onClick={() => navigateToProfile(reply.profiles?.username)}
+                        className="font-bold text-white text-xs cursor-pointer hover:underline"
+                      >
+                        {reply.profiles?.username}
+                      </span>
                       <span className="text-gray-500 text-[10px]">
                         {formatDistanceToNow(new Date(reply.created_at))} ago
                       </span>
@@ -161,7 +205,7 @@ const FeedCard = (post: Post) => {
       <TipModal 
         isOpen={isTipOpen} 
         onClose={() => setIsTipOpen(false)} 
-        recipient={post.profiles?.username || 'Anonymous'} 
+        recipient={displayUsername || 'Anonymous'} 
       />
     </div>
   );

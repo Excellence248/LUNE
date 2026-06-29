@@ -24,6 +24,7 @@ import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useSingleTokenData } from '@/hooks/useSingleTokenData';
 import { useTokenHistory } from '@/hooks/useTokenHistory';
+import { Post } from '@/context/SocialContext';
 
 const TokenDetail = () => {
   const { symbol = 'LUNE' } = useParams();
@@ -33,14 +34,15 @@ const TokenDetail = () => {
   const numericPrice = tokenData ? parseFloat(tokenData.price.replace(/[^0-9.-]/g, '')) : 0;
   const { history, loading: historyLoading } = useTokenHistory(symbol, numericPrice);
 
-  const relatedPosts = [
+  const relatedPosts: Post[] = [
     {
       id: 'related-1',
-      user: { id: 'whale-1', name: 'Solana Whale', handle: '@solwhale', avatar: '' },
+      user_id: 'whale-1',
       content: `Just spotted a massive accumulation on $${symbol}. The order book looks incredibly thin on the sell side.`,
-      timestamp: '2m',
-      likedBy: [],
-      repostedBy: [],
+      created_at: new Date().toISOString(),
+      profiles: { username: 'Solana Whale', avatar_url: '' },
+      likes: [],
+      reposts: [],
       replies: []
     }
   ];
@@ -163,7 +165,7 @@ const TokenDetail = () => {
               <h3 className="text-xl font-bold px-2">Recent Alpha</h3>
               <div className="bg-white/5 border border-white/10 rounded-[2rem] overflow-hidden divide-y divide-white/5">
                 {relatedPosts.map((post) => (
-                  <FeedCard key={post.id} {...post} />
+                  <FeedCard key={post.id} post={post} />
                 ))}
               </div>
             </div>

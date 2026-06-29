@@ -1,29 +1,67 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import Layout from '@/components/lune/Layout';
 import FeedCard from '@/components/lune/FeedCard';
-import { Shield, Zap, Copy, ExternalLink, Twitter, Globe, Award, Users, Edit3 } from 'lucide-react';
+import { Shield, Edit3, Camera } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useWallet } from '@/context/WalletContext';
 import { useSocial } from '@/context/SocialContext';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { showSuccess } from '@/utils/toast';
+import { showSuccess, showError } from '@/utils/toast';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 const Profile = () => {
   const { user, updateProfile } = useWallet();
   const { posts } = useSocial();
-  const [editData, setEditData] = useState({ username: user?.username || '', bio: user?.bio || '' });
+  const [loading, setLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [editData, setEditData] = useState({ 
+    username: user?.username || '', 
+    bio: user?.bio || '',
+    avatar: user?.avatar || ''
+  });
 
-  const handleSave = () => {
-    updateProfile(editData);
-    showSuccess("Profile updated!");
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        showError("Image size must be less than 2MB");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setEditData({ ...editData, avatar: reader.result as string });
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
-  const userPosts = posts.filter(p => p.user.handle === `@${user?.username || user?.email.split('@')[0]}`);
+  const handleSave = async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      await updateProfile(editData);
+      showSuccess("Profile updated!");
+    } catch (error) {
+      showError("Failed to update profile");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Filter posts where user is author OR user has reposted
+  const userPosts = posts.filter(p => 
+    p.user_id === user?.id || p.reposts?.some(r => r.user_id === user?.id)
+  );
 
   return (
     <Layout noPadding>
@@ -35,7 +73,10 @@ const Profile = () => {
       <div className="px-4 md:px-8 -mt-16 md:-mt-20 relative z-10 max-w-4xl">
         <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
           <Avatar className="w-32 h-32 md:w-40 md:h-40 border-8 border-[#050505] rounded-[2.5rem] shadow-2xl">
-            <AvatarFallback className="bg-purple-600 text-4xl font-bold">{user?.username?.[0] || 'U'}</AvatarFallback>
+            <AvatarImage src={user?.avatar} />
+            <AvatarFallback className="bg-purple-600 text-4xl font-bold">
+              {user?.username?.[0] || user?.email?.[0] || 'U'}
+            </AvatarFallback>
           </Avatar>
           
           <div className="flex gap-3 pb-4">
@@ -49,7 +90,27 @@ const Profile = () => {
                 <DialogHeader>
                   <DialogTitle>Edit Profile</DialogTitle>
                 </DialogHeader>
-                <div className="space-y-4 py-4">
+                <div className="space-y-6 py-4">
+                  <div className="flex flex-col items-center gap-4">
+                    <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                      <Avatar className="w-24 h-24 border-4 border-white/10">
+                        <AvatarImage src={editData.avatar} />
+                        <AvatarFallback className="bg-purple-900 text-2xl">{editData.username?.[0]}</AvatarFallback>
+                      </Avatar>
+                      <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Camera size={24} />
+                      </div>
+                      <input 
+                        type="file" 
+                        ref={fileInputRef} 
+                        onChange={handleImageSelect} 
+                        accept="image/*" 
+                        className="hidden" 
+                      />
+                    </div>
+                    <p className="text-[10px] text-gray-500 uppercase font-bold">Click to change avatar</p>
+                  </div>
+
                   <div className="space-y-2">
                     <Label>Username</Label>
                     <Input 
@@ -63,10 +124,16 @@ const Profile = () => {
                     <textarea 
                       value={editData.bio} 
                       onChange={e => setEditData({...editData, bio: e.target.value})}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl p-3 h-24 focus:outline-none"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl p-3 h-24 focus:outline-none text-white"
                     />
                   </div>
-                  <Button onClick={handleSave} className="w-full bg-purple-600 hover:bg-purple-500">Save Changes</Button>
+                  <Button 
+                    onClick={handleSave} 
+                    disabled={loading}
+                    className="w-full bg-purple-600 hover:bg-purple-500"
+                  >
+                    {loading ? "Saving..." : "Save Changes"}
+                  </Button>
                 </div>
               </DialogContent>
             </Dialog>
@@ -83,7 +150,7 @@ const Profile = () => {
           </div>
 
           <p className="text-gray-300 text-lg leading-relaxed max-w-2xl">
-            {user?.bio}
+            {user?.bio || "No bio set yet."}
           </p>
 
           <div className="grid grid-cols-3 gap-8 py-6 border-y border-white/5">
@@ -105,7 +172,15 @@ const Profile = () => {
             <h3 className="text-xl font-bold mb-6">Your Alpha</h3>
             <div className="divide-y divide-white/5">
               {userPosts.length > 0 ? (
-                userPosts.map((post) => <FeedCard key={post.id} {...post} />)
+                userPosts.map((post) => (
+                  <FeedCard 
+                    key={post.id} 
+                    post={{
+                      ...post,
+                      repostedBy: post.user_id !== user?.id ? user?.username : undefined
+                    }} 
+                  />
+                ))
               ) : (
                 <p className="text-gray-500 py-8 text-center">No posts yet. Share some alpha!</p>
               )}
