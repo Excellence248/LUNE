@@ -126,7 +126,7 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
       await action();
       return true;
     } catch (error) {
-      showError(error instanceof Error ? error.message : 'The action could not be saved. Check your wallet session and try again.');
+      showError(error instanceof Error ? error.message : 'The action could not be saved. Check your login session and try again.');
       return false;
     } finally { busy.current = false; setPending(false); }
   };
@@ -191,9 +191,9 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
             <button
               onClick={() => navigateToProfile(displayUsername)}
               className="font-semibold text-white hover:underline truncate"
-              title={post.profiles?.wallet_address}
+              title={post.profiles?.wallet_address || undefined}
             >
-              {displayName || 'Wallet user'}
+              {displayName || 'Lune user'}
             </button>
             {displayUsername && <span className="text-white/35 truncate hidden sm:inline">@{displayName}</span>}
             <span className="text-white/25">·</span>
@@ -239,7 +239,7 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
             <ActionButton
               icon={Repeat2}
               tone="up"
-              label={!currentUser ? 'Connect a wallet to repost' : isReposted ? 'Undo repost' : 'Repost'}
+              label={!currentUser ? 'Log in to repost' : isReposted ? 'Undo repost' : 'Repost'}
               count={post.reposts?.length || 0}
               active={isReposted}
               disabled={!currentUser || pending}
@@ -248,7 +248,7 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
             <ActionButton
               icon={Heart}
               tone="pink"
-              label={!currentUser ? 'Connect a wallet to like' : isLiked ? 'Unlike' : 'Like'}
+              label={!currentUser ? 'Log in to like' : isLiked ? 'Unlike' : 'Like'}
               count={post.likes?.length || 0}
               active={isLiked}
               fill
@@ -311,7 +311,7 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
                   </button>
                 </form>
               ) : (
-                <p className="text-xs text-white/35 px-1">Connect a wallet to reply.</p>
+                <p className="text-xs text-white/35 px-1"><Link to="/signin" className="text-lune-300 hover:underline">Log in</Link> to reply.</p>
               )}
             </div>
           )}

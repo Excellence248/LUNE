@@ -28,6 +28,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Link, useLocation } from 'react-router-dom';
 import { useWallet } from '@/context/WalletContext';
+import { showError } from '@/utils/toast';
 import { LuneLogo } from './Brand';
 
 export const navSections = [
@@ -142,8 +143,7 @@ export const SidebarContent = ({ onClose }: { onClose?: () => void }) => {
         {isAuthenticated && (
           <button
             onClick={() => {
-              disconnect();
-              onClose?.();
+              void disconnect().then(() => onClose?.()).catch(() => showError('Log out failed. Please retry.'));
             }}
             className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[13.5px] font-medium text-white/40 hover:text-red-300 hover:bg-red-500/[0.06] transition-all"
           >

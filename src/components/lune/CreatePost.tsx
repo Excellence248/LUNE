@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Image as ImageIcon, X, Wallet, Loader2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Image as ImageIcon, X, UserRound, Loader2 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
 import { useSocial } from '@/context/SocialContext';
 import { useWallet } from '@/context/WalletContext';
-import WalletModal from './WalletModal';
 import { showSuccess, showError } from '@/utils/toast';
 
 const CreatePost = () => {
@@ -11,11 +12,10 @@ const CreatePost = () => {
   const [image, setImage] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [posting, setPosting] = useState(false);
-  const [walletOpen, setWalletOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const busy = useRef(false);
   const { addPost } = useSocial();
-  const { user, loading, authError } = useWallet();
+  const { session, user, loading, authError, refreshProfile } = useWallet();
 
   useEffect(() => {
     if (!image) { setPreview(null); return; }
@@ -49,21 +49,20 @@ const CreatePost = () => {
   };
 
   if (loading && !user) {
-    return <div className="p-5 flex items-center gap-3 text-sm text-white/45" role="status"><Loader2 className="animate-spin" size={18} />Checking wallet session…</div>;
+    return <div className="p-5 flex items-center gap-3 text-sm text-white/45" role="status"><Loader2 className="animate-spin" size={18} />Loading your account…</div>;
   }
 
   if (!user) {
     return (
       <div className="px-4 md:px-6 py-5 space-y-3">
         <div className="flex items-start gap-3 text-sm text-white/50">
-          <Wallet size={20} className="text-lune-300 shrink-0 mt-1" />
+          <UserRound size={20} className="text-lune-300 shrink-0 mt-1" />
           <div className="space-y-3">
-            <p>Everyone can read this feed. Connect a Solana wallet to share a public post, like, or reply.</p>
-            <button onClick={() => setWalletOpen(true)} className="lune-btn h-9 text-sm">Connect wallet</button>
+            <p>{session ? 'You’re logged in, but your profile could not be loaded.' : 'Join the conversation. Create an account to post, follow people, like, repost, and reply. No wallet required.'}</p>
+            {session ? <Button onClick={() => void refreshProfile()} className="rounded-full">Retry loading profile</Button> : <div className="flex gap-2"><Button asChild className="rounded-full bg-lune-500 hover:bg-lune-600"><Link to="/signup">Create account</Link></Button><Button asChild variant="outline" className="rounded-full border-white/15 bg-transparent"><Link to="/signin">Log in</Link></Button></div>}
           </div>
         </div>
         {authError && <p className="text-xs text-red-300" role="alert">{authError}</p>}
-        <WalletModal isOpen={walletOpen} onClose={() => setWalletOpen(false)} />
       </div>
     );
   }

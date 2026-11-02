@@ -6,7 +6,7 @@ import { useAccountNotifications } from '@/hooks/useAccountNotifications';
 export interface PublicProfile {
   id: string;
   username: string;
-  wallet_address: string;
+  wallet_address: string | null;
   avatar_url: string;
   bio: string;
 }
@@ -196,13 +196,13 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
     try { await fetchPosts(); } finally { loadingMoreRef.current = false; setLoadingMore(false); }
   };
 
-  const requireWallet = () => {
-    if (!userId || currentUserId.current !== userId) throw new Error('Connect and sign in with a wallet first.');
+  const requireAccount = () => {
+    if (!userId || currentUserId.current !== userId) throw new Error('Log in to join the conversation.');
     return userId;
   };
 
   const addPost = async (content: string, image?: File) => {
-    const author = requireWallet();
+    const author = requireAccount();
     const text = content.trim();
     if (text.length > 2000) throw new Error('Posts must be 2,000 characters or fewer.');
     if (!text && !image) throw new Error('Write something or attach an image.');
@@ -217,12 +217,12 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
         if (!extension || image.size > 5 * 1024 * 1024) throw new Error('Choose a JPG, PNG, WebP, or GIF image up to 5MB.');
         path = `${author}/${crypto.randomUUID()}.${extension}`;
         const { error } = await supabase.storage.from('feed-media').upload(path, image, { contentType: image.type });
-        if (error) throw new Error('Your image could not be uploaded. Check your connection and wallet session, then retry.');
+        if (error) throw new Error('Your image could not be uploaded. Check your connection and login session, then retry.');
         imageUrl = supabase.storage.from('feed-media').getPublicUrl(path).data.publicUrl;
       }
-      if (currentUserId.current !== author) throw new Error('Your wallet changed while posting. Reconnect and try again.');
+      if (currentUserId.current !== author) throw new Error('Your account changed while posting. Log in and try again.');
       const { data, error } = await supabase.from('posts').insert({ user_id: author, content: text, image_url: imageUrl }).select(postSelect).single();
-      if (error) throw new Error('Your post could not be saved. Check your wallet session and connection, then retry.');
+      if (error) throw new Error('Your post could not be saved. Check your login session and connection, then retry.');
       saved = true;
       requestNumber.current += 1;
       setPosts(previous => [data as unknown as Post, ...previous.filter(post => post.id !== data.id)].slice(0, visibleCount.current));
@@ -235,20 +235,20 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const toggleRelation = async (table: 'likes' | 'reposts', postId: string): Promise<boolean> => {
-    const author = requireWallet();
+    const author = requireAccount();
     const key = `${table}:${author}:${postId}`;
     if (busyRelations.current.has(key)) throw new Error('This action is already being saved.');
     busyRelations.current.add(key);
     try {
       const { data: existing, error: readError } = await supabase.from(table).select('user_id').eq('post_id', postId).eq('user_id', author).maybeSingle();
       if (readError) throw new Error('Your reaction could not be checked. Please retry.');
-      if (currentUserId.current !== author) throw new Error('Your wallet changed. Reconnect and try again.');
+      if (currentUserId.current !== author) throw new Error('Your account changed. Log in and try again.');
       if (existing) {
         const { data: deleted, error } = await supabase.from(table).delete().eq('post_id', postId).eq('user_id', author).select('user_id');
-        if (error || !deleted?.length) throw new Error('Your reaction could not be removed. Check your wallet session and try again.');
+        if (error || !deleted?.length) throw new Error('Your reaction could not be removed. Check your login session and try again.');
       } else {
         const { error } = await supabase.from(table).insert({ post_id: postId, user_id: author });
-        if (error && error.code !== '23505') throw new Error('Your reaction could not be saved. Check your wallet session and try again.');
+        if (error && error.code !== '23505') throw new Error('Your reaction could not be saved. Check your login session and try again.');
       }
       const active = !existing;
       requestNumber.current += 1;
@@ -262,7 +262,7 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const addComment = async (postId: string, content: string): Promise<Reply> => {
-    const author = requireWallet();
+    const author = requireAccount();
     const text = content.trim();
     if (!text || text.length > 1000) throw new Error('Replies must contain 1–1,000 characters.');
     const key = `reply:${author}:${postId}`;
@@ -270,7 +270,7 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
     busyRelations.current.add(key);
     try {
       const { data, error } = await supabase.from('replies').insert({ post_id: postId, user_id: author, content: text }).select('*, profiles(username, avatar_url, wallet_address)').single();
-      if (error) throw new Error('Your reply could not be saved. Check your wallet session and connection, then retry.');
+      if (error) throw new Error('Your reply could not be saved. Check your login session and connection, then retry.');
       const reply = data as unknown as Reply;
       requestNumber.current += 1;
       setPosts(previous => previous.map(post => post.id === postId ? { ...post, replies: [...(post.replies || []).filter(row => row.id !== reply.id), reply] } : post));
@@ -280,7 +280,7 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const followUser = async (targetUserId: string) => {
-    const author = requireWallet();
+    const author = requireAccount();
     if (author === targetUserId) return;
     const key = `follow:${author}:${targetUserId}`;
     if (busyRelations.current.has(key)) return;
@@ -298,7 +298,7 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
     }
   };
   const unfollowUser = async (targetUserId: string) => {
-    const author = requireWallet();
+    const author = requireAccount();
     const key = `follow:${author}:${targetUserId}`;
     if (busyRelations.current.has(key)) return;
     busyRelations.current.add(key);

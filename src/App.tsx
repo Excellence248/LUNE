@@ -1,5 +1,10 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AppWrapper } from "./components/lune/AppWrapper";
+import RequireAccount from "./components/auth/RequireAccount";
+import Login from "./pages/Login";
+import AuthCallback from "./pages/AuthCallback";
+import EmailLink from "./pages/EmailLink";
+import ResetPassword from "./pages/ResetPassword";
 import Index from "./pages/Index";
 import PostDetail from "./pages/PostDetail";
 import Launchpad from "./pages/Launchpad";
@@ -34,8 +39,12 @@ const App = () => (
   <AppWrapper>
     <BrowserRouter>
       <Routes>
-        <Route path="/signin" element={<Navigate to="/" replace />} />
-        <Route path="/signup" element={<Navigate to="/" replace />} />
+        <Route path="/signin" element={<Login />} />
+        <Route path="/signup" element={<Login view="sign_up" />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="/forgot-password" element={<EmailLink purpose="recovery" />} />
+        <Route path="/confirm-email" element={<EmailLink purpose="confirmation" />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/" element={<Index />} />
         <Route path="/post/:id" element={<PostDetail />} />
         <Route path="/explorer" element={<Explorer />} />
@@ -49,13 +58,13 @@ const App = () => (
         <Route path="/wallet" element={<Wallet />} />
         <Route path="/jobs" element={<Jobs />} />
         <Route path="/communities" element={<Communities />} />
-        <Route path="/profile" element={<Profile />} />
+        <Route path="/profile" element={<RequireAccount><Profile /></RequireAccount>} />
         <Route path="/profile/:username" element={<UserProfile />} />
         <Route path="/trade/:symbol" element={<Trade />} />
         <Route path="/demo-trade" element={<DemoTrade />} />
         <Route path="/nfts" element={<NFTs />} />
         <Route path="/live-auction" element={<LiveAuction />} />
-        <Route path="/notifications" element={<Notifications />} />
+        <Route path="/notifications" element={<RequireAccount><Notifications /></RequireAccount>} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/governance" element={<Governance />} />
         <Route path="/messages" element={<Messages />} />

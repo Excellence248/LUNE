@@ -49,7 +49,7 @@ const PublicProfileView = ({ username }: { username: string }) => {
       if (following) await unfollowUser(profile.id);
       else await followUser(profile.id);
     } catch {
-      showError(`Could not ${following ? 'unfollow' : 'follow'} this account. Check your wallet session and connection, then try again.`);
+      showError(`Could not ${following ? 'unfollow' : 'follow'} this account. Check your login session and connection, then try again.`);
     } finally {
       busy.current = false;
       setPending(false);
@@ -91,7 +91,7 @@ const PublicProfileView = ({ username }: { username: string }) => {
           <Button
             variant={following ? 'outline' : 'default'}
             disabled={!currentUser || pending || followingLoading || !!followingError}
-            title={!currentUser ? 'Connect your wallet to follow this account' : followingError || undefined}
+            title={!currentUser ? 'Log in to follow this account' : followingError || undefined}
             aria-pressed={following}
             aria-busy={pending}
             onClick={handleFollow}

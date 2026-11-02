@@ -95,7 +95,7 @@ const Notifications = () => {
     <Layout>
       <div className="mx-auto w-full max-w-2xl">
         <PageHeader eyebrow="Your network" icon={Bell} title="Activity" description="Likes, reposts, replies and new followers." />
-        {user ? <NotificationList key={user.id} /> : loading ? <div role="status" className="flex items-center justify-center gap-2 py-16 text-white/50"><Loader2 className="h-5 w-5 animate-spin" /> Checking your account…</div> : <div className="lune-card"><EmptyState icon={Bell} title="Sign in to see activity">Connect your wallet using the button above. Notifications are private to your account.</EmptyState></div>}
+        {user ? <NotificationList key={user.id} /> : loading ? <div role="status" className="flex items-center justify-center gap-2 py-16 text-white/50"><Loader2 className="h-5 w-5 animate-spin" /> Checking your account…</div> : <div className="lune-card"><EmptyState icon={Bell} title="Sign in to see activity"><Link to="/signin" className="text-lune-300 hover:underline">Log in</Link> to your account. Notifications are private.</EmptyState></div>}
       </div>
     </Layout>
   );

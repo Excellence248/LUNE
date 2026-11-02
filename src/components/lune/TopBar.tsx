@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from 'react';
-import { Bell, Wallet, Menu, LogOut, User, Settings } from 'lucide-react';
+import { Bell, Menu, LogOut, User, Settings } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
 import {
   DropdownMenu,
@@ -12,13 +13,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { SidebarContent } from './Sidebar';
-import WalletModal from './WalletModal';
 import PriceTicker from './PriceTicker';
 import PeopleSearch from './PeopleSearch';
 import { LuneLogo } from './Brand';
 import { useWallet } from '@/context/WalletContext';
 import { useSocial } from '@/context/SocialContext';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { shortWalletAddress } from '@/lib/solana-wallet';
 import { showError } from '@/utils/toast';
@@ -28,12 +28,11 @@ const iconBtn =
 
 const TopBar = () => {
   const navigate = useNavigate();
-  const [isWalletOpen, setIsWalletOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const { isAuthenticated, user, disconnect } = useWallet();
   const { unreadCount } = useSocial();
 
-  const displayName = user ? (user.username === user.walletAddress ? shortWalletAddress(user.walletAddress) : user.username) : 'Wallet';
+  const displayName = user ? (user.walletAddress && user.username === user.walletAddress ? shortWalletAddress(user.walletAddress) : user.username) : 'Account';
 
   return (
     <header className="h-16 lg:h-[72px] border-b border-white/[0.06] bg-[hsl(260_40%_3%/0.7)] backdrop-blur-2xl sticky top-0 z-40 px-3 md:px-6 lg:px-10 flex items-center justify-between gap-3">
@@ -50,7 +49,7 @@ const TopBar = () => {
           </SheetContent>
         </Sheet>
 
-        <LuneLogo className="lg:hidden" />
+        <LuneLogo className="lg:hidden [&>span:last-child]:hidden sm:[&>span:last-child]:inline" />
 
         <PeopleSearch />
 
@@ -87,7 +86,7 @@ const TopBar = () => {
             >
               <DropdownMenuLabel className="px-2.5 py-2">
                 <p className="text-sm font-semibold truncate">{displayName}</p>
-                <p className="text-xs font-normal text-white/40 truncate" title={user?.walletAddress}>{user?.walletAddress}</p>
+                <p className="text-xs font-normal text-white/40 truncate" title={user?.email || user?.walletAddress || undefined}>{user?.email || user?.walletAddress}</p>
               </DropdownMenuLabel>
               <DropdownMenuSeparator className="bg-white/10" />
               <DropdownMenuItem onClick={() => navigate('/profile')} className="rounded-xl gap-2.5 py-2 focus:bg-white/[0.06]">
@@ -98,26 +97,20 @@ const TopBar = () => {
               </DropdownMenuItem>
               <DropdownMenuSeparator className="bg-white/10" />
               <DropdownMenuItem
-                onClick={() => disconnect().catch(() => showError('Wallet sign-out failed. Please retry.'))}
+                onClick={() => disconnect().catch(() => showError('Log out failed. Please retry.'))}
                 className="rounded-xl gap-2.5 py-2 text-red-300 focus:text-red-200 focus:bg-red-500/10"
               >
-                <LogOut size={16} /> Disconnect
+                <LogOut size={16} /> Log out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         ) : (
-          <button
-            onClick={() => setIsWalletOpen(true)}
-            aria-label="Connect wallet"
-            className="flex items-center gap-2 h-10 px-3 md:px-4 rounded-full border border-white/10 bg-white/[0.03] text-white/60 hover:text-white hover:border-lune-400/40 text-xs font-semibold transition-all"
-          >
-            <Wallet size={15} />
-            <span className="hidden sm:inline">Connect wallet</span>
-          </button>
+          <>
+            <Button asChild variant="ghost" className="rounded-full px-2 text-xs text-white/70 sm:px-3 sm:text-sm"><Link to="/signin">Log in</Link></Button>
+            <Button asChild className="rounded-full bg-lune-500 px-3 text-xs text-white hover:bg-lune-600 sm:text-sm md:px-5"><Link to="/signup">Sign up</Link></Button>
+          </>
         )}
       </div>
-
-      <WalletModal isOpen={isWalletOpen} onClose={() => setIsWalletOpen(false)} />
     </header>
   );
 };

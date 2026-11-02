@@ -7,7 +7,7 @@ import { postSelect, useSocial, type Post } from '@/context/SocialContext';
 import { supabase } from '@/lib/supabase';
 
 interface ProfileActivityProps {
-  user: { id: string; username: string; avatar: string; walletAddress: string };
+  user: { id: string; username: string; avatar: string; walletAddress: string | null };
   kind: 'posts' | 'reposts';
   personal?: boolean;
 }

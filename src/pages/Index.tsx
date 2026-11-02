@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import Layout from '@/components/lune/Layout';
 import FeedCard from '@/components/lune/FeedCard';
 import CreatePost from '@/components/lune/CreatePost';
@@ -59,6 +60,7 @@ const Index = () => {
 
         <CreatePost key={user?.id || 'guest'} />
 
+        {user && user.username === `user_${user.id.replace(/-/g, '')}` && <div className="mx-4 my-3 rounded-2xl border border-lune-400/20 bg-lune-500/10 p-4 text-sm md:mx-6"><p className="font-semibold">Welcome to Lune. Make your profile yours.</p><p className="mt-1 text-white/55">Choose a username, add a photo and bio, then share your first post.</p><Link to="/profile" className="mt-3 inline-block font-semibold text-lune-300 hover:underline">Set up my profile →</Link></div>}
         <div className="mx-4 md:mx-6 my-3 flex items-start gap-2.5 rounded-2xl border border-white/[0.06] bg-white/[0.02] px-3.5 py-2.5 text-xs text-white/40 leading-relaxed">
           <Info size={14} className="mt-0.5 shrink-0 text-lune-300/70" />
           <p>Posts are user-submitted and not fact-checked. Nothing here is financial advice.</p>

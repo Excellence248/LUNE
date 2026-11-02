@@ -5,11 +5,12 @@ import ProfileHero from '@/components/lune/ProfileHero';
 import ProfileEditor from '@/components/lune/ProfileEditor';
 import ProfileActivity from '@/components/lune/ProfileActivity';
 import { EmptyState } from '@/components/lune/Brand';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useWallet } from '@/context/WalletContext';
 
 const Profile = () => {
-  const { user, loading, authError } = useWallet();
+  const { user, loading, authError, refreshProfile } = useWallet();
 
   if (loading) {
     return <Layout><div role="status" className="flex items-center justify-center gap-3 py-20 text-white/50"><Loader2 className="h-5 w-5 animate-spin" /> Loading your profile…</div></Layout>;
@@ -20,8 +21,9 @@ const Profile = () => {
       <Layout>
         <div className="lune-card mx-auto mt-10 max-w-lg">
           <EmptyState icon={UserRound} title={authError ? 'Profile could not be loaded' : 'Your profile starts here'}>
-            {authError || 'Connect your wallet using the button above to edit your profile and see your activity.'}
+            {authError || 'Log in to edit your profile and see your activity.'}
           </EmptyState>
+          <div className="pb-8 text-center"><Button onClick={() => void refreshProfile()}>Retry loading profile</Button></div>
         </div>
       </Layout>
     );
@@ -59,12 +61,12 @@ const Profile = () => {
           </section>
 
           <aside className="space-y-4 rounded-3xl border border-white/10 bg-white/[0.02] p-5">
-            <div className="flex items-center gap-2 text-sm font-semibold"><Wallet size={16} className="text-lune-300" /> Connected identity</div>
+            <div className="flex items-center gap-2 text-sm font-semibold">{user.walletAddress ? <Wallet size={16} className="text-lune-300" /> : <UserRound size={16} className="text-lune-300" />} Your account</div>
             <div>
-              <p className="mb-2 text-xs text-white/40">Solana wallet</p>
-              <p className="break-all font-mono text-xs leading-6 text-white/70">{user.walletAddress}</p>
+              <p className="mb-2 text-xs text-white/40">{user.email ? 'Signed-in email · private' : 'Solana wallet'}</p>
+              <p className="break-all font-mono text-xs leading-6 text-white/70">{user.email || user.walletAddress}</p>
             </div>
-            <p className="border-t border-white/10 pt-4 text-xs leading-relaxed text-white/40">Your wallet identifies your account. Your username, photo, and bio can be changed without changing your wallet.</p>
+            <p className="border-t border-white/10 pt-4 text-xs leading-relaxed text-white/40">Your username, photo, and bio are public and can be changed with Edit profile. Your email is never shown on your public profile.</p>
           </aside>
         </div>
       </div>
