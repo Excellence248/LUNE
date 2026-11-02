@@ -35,12 +35,12 @@ const ProfileHero = ({ name, handle, subtitle, avatarUrl, bio, actions, footnote
 
       <div className="mt-4 space-y-3">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold">{name}</h1>
-          {handle && <p className="text-white/40 text-sm">@{handle}</p>}
-          {subtitle && <p className="text-white/40 text-sm font-mono">{subtitle}</p>}
+          <h1 className="break-all text-2xl md:text-3xl font-bold">{name}</h1>
+          {handle && <p className="break-all text-white/40 text-sm">@{handle}</p>}
+          {subtitle && <p className="break-all text-white/40 text-sm font-mono">{subtitle}</p>}
         </div>
         {bio !== undefined && (
-          <p className="selectable text-white/75 leading-relaxed max-w-2xl">
+          <p className="selectable whitespace-pre-wrap break-words text-white/75 leading-relaxed max-w-2xl">
             {bio || <span className="text-white/35 italic">No bio yet.</span>}
           </p>
         )}

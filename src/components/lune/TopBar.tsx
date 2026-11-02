@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
-import { Search, Bell, Wallet, Menu, LogOut, User, Settings } from 'lucide-react';
+import { useState } from 'react';
+import { Bell, Wallet, Menu, LogOut, User, Settings } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
 import {
   DropdownMenu,
@@ -14,9 +14,10 @@ import {
 import { SidebarContent } from './Sidebar';
 import WalletModal from './WalletModal';
 import PriceTicker from './PriceTicker';
+import PeopleSearch from './PeopleSearch';
 import { LuneLogo } from './Brand';
 import { useWallet } from '@/context/WalletContext';
-import { useSocial, PublicProfile } from '@/context/SocialContext';
+import { useSocial } from '@/context/SocialContext';
 import { useNavigate } from 'react-router-dom';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { shortWalletAddress } from '@/lib/solana-wallet';
@@ -30,54 +31,7 @@ const TopBar = () => {
   const [isWalletOpen, setIsWalletOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const { isAuthenticated, user, disconnect } = useWallet();
-  const { searchUsers, unreadCount } = useSocial();
-
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<PublicProfile[]>([]);
-  const [searchError, setSearchError] = useState<string | null>(null);
-  const [isSearching, setIsSearching] = useState(false);
-  const searchRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
-        setIsSearching(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    const delayDebounceFn = setTimeout(async () => {
-      if (searchQuery.trim()) {
-        try {
-          const results = await searchUsers(searchQuery);
-          if (!active) return;
-          setSearchResults(results);
-          setSearchError(null);
-        } catch {
-          if (!active) return;
-          setSearchResults([]);
-          setSearchError('People search is unavailable. Please retry.');
-        }
-        setIsSearching(true);
-      } else {
-        setSearchResults([]);
-        setSearchError(null);
-        setIsSearching(false);
-      }
-    }, 300);
-
-    return () => { active = false; clearTimeout(delayDebounceFn); };
-  }, [searchQuery, searchUsers]);
-
-  const handleUserClick = (username: string) => {
-    setSearchQuery('');
-    setIsSearching(false);
-    navigate(`/profile/${username}`);
-  };
+  const { unreadCount } = useSocial();
 
   const displayName = user ? (user.username === user.walletAddress ? shortWalletAddress(user.walletAddress) : user.username) : 'Wallet';
 
@@ -98,47 +52,7 @@ const TopBar = () => {
 
         <LuneLogo className="lg:hidden" />
 
-        <div className="flex-1 max-w-md relative hidden sm:block ml-2 lg:ml-0" ref={searchRef}>
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" size={16} />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            onFocus={() => searchQuery && setIsSearching(true)}
-            placeholder="Search people…"
-            aria-label="Search users"
-            className="lune-input rounded-full py-2.5 pl-11 pr-4"
-          />
-
-          {isSearching && (
-            <div className="absolute top-full left-0 right-0 mt-2 bg-popover/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_20px_60px_-10px_rgba(0,0,0,0.8)] overflow-hidden z-50">
-              <div className="p-2">
-                <p className="text-[10px] font-semibold text-white/35 uppercase tracking-widest px-3 py-2">People</p>
-                {searchError ? <p role="alert" className="px-3 pb-3 text-sm text-red-300">{searchError}</p> : searchResults.length === 0 && (
-                  <p className="px-3 pb-3 text-sm text-white/40">No users match “{searchQuery}”.</p>
-                )}
-                {searchResults.map(result => (
-                  <button
-                    key={result.id}
-                    onClick={() => handleUserClick(result.username)}
-                    className="w-full flex items-center gap-3 p-2.5 hover:bg-white/[0.05] rounded-xl transition-colors text-left"
-                  >
-                    <Avatar className="w-9 h-9 ring-1 ring-white/10">
-                      <AvatarImage src={result.avatar_url} />
-                      <AvatarFallback className="bg-lune-900 text-lune-200 text-xs font-semibold">
-                        {result.username?.[0]?.toUpperCase() || 'U'}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-white truncate">{result.username}</p>
-                      <p className="text-xs text-white/40">@{result.username}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+        <PeopleSearch />
 
         <PriceTicker />
       </div>

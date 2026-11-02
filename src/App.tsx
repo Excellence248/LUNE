@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AppWrapper } from "./components/lune/AppWrapper";
 import Index from "./pages/Index";
+import PostDetail from "./pages/PostDetail";
 import Launchpad from "./pages/Launchpad";
 import LaunchpadDetail from "./pages/LaunchpadDetail";
 import Spaces from "./pages/Spaces";
@@ -36,6 +37,7 @@ const App = () => (
         <Route path="/signin" element={<Navigate to="/" replace />} />
         <Route path="/signup" element={<Navigate to="/" replace />} />
         <Route path="/" element={<Index />} />
+        <Route path="/post/:id" element={<PostDetail />} />
         <Route path="/explorer" element={<Explorer />} />
         <Route path="/token/:symbol" element={<TokenDetail />} />
         <Route path="/launchpad" element={<Launchpad />} />

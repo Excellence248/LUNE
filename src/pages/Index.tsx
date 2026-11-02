@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Layout from '@/components/lune/Layout';
 import FeedCard from '@/components/lune/FeedCard';
 import CreatePost from '@/components/lune/CreatePost';
@@ -6,6 +6,7 @@ import TrendingSidebar from '@/components/lune/TrendingSidebar';
 import { EmptyState } from '@/components/lune/Brand';
 import { RefreshCw, Info, Inbox, AlertTriangle } from 'lucide-react';
 import { useSocial } from '@/context/SocialContext';
+import { useWallet } from '@/context/WalletContext';
 
 const PostSkeleton = () => (
   <div className="p-5 md:px-6 flex gap-3.5 animate-pulse">
@@ -20,12 +21,17 @@ const PostSkeleton = () => (
 
 const Index = () => {
   const { posts, refreshFeed, loading, feedError, liveStatus, hasMore, loadMore, loadingMore } = useSocial();
+  const { user } = useWallet();
   const [refreshing, setRefreshing] = useState(false);
+  const refreshBusy = useRef(false);
   const handleRefresh = async () => {
+    if (refreshBusy.current) return;
+    refreshBusy.current = true;
     setRefreshing(true);
     try {
       await refreshFeed();
     } finally {
+      refreshBusy.current = false;
       setRefreshing(false);
     }
   };
@@ -51,15 +57,18 @@ const Index = () => {
           </button>
         </div>
 
-        <CreatePost />
+        <CreatePost key={user?.id || 'guest'} />
 
         <div className="mx-4 md:mx-6 my-3 flex items-start gap-2.5 rounded-2xl border border-white/[0.06] bg-white/[0.02] px-3.5 py-2.5 text-xs text-white/40 leading-relaxed">
           <Info size={14} className="mt-0.5 shrink-0 text-lune-300/70" />
           <p>Posts are user-submitted and not fact-checked. Nothing here is financial advice.</p>
         </div>
 
+        {feedError && posts.length > 0 && <div className="mx-4 my-3 space-y-2 rounded-xl border border-amber-400/20 bg-amber-400/10 p-3 md:mx-6"><p role="alert" className="text-sm text-amber-200">{feedError}</p><button onClick={handleRefresh} disabled={refreshing} className="text-sm font-semibold text-amber-100 disabled:opacity-50">{refreshing ? 'Retrying…' : 'Retry refresh'}</button></div>}
         <div className="divide-y divide-white/[0.06] border-t border-white/[0.06]">
-          {loading ? (
+          {posts.length ? (
+            posts.map(post => <FeedCard key={post.id} post={post} />)
+          ) : loading ? (
             <div role="status" aria-label="Loading posts">
               <PostSkeleton />
               <PostSkeleton />
@@ -70,15 +79,13 @@ const Index = () => {
               <span role="alert">{feedError}</span>
               <button onClick={handleRefresh} disabled={refreshing} className="lune-btn h-9 mt-4 block mx-auto">{refreshing ? 'Retrying…' : 'Retry'}</button>
             </EmptyState>
-          ) : posts.length ? (
-            posts.map(post => <FeedCard key={post.id} post={post} />)
           ) : (
             <EmptyState icon={Inbox} title="No posts yet">
               Be the first to share something with the community.
             </EmptyState>
           )}
         </div>
-        {!feedError && hasMore && <div className="p-5 flex justify-center"><button onClick={loadMore} disabled={loadingMore} className="lune-btn h-9">{loadingMore ? 'Loading…' : 'Load older posts'}</button></div>}
+        {hasMore && <div className="p-5 flex justify-center"><button onClick={loadMore} disabled={loadingMore || refreshing} className="lune-btn h-9">{loadingMore ? 'Loading…' : 'Load older posts'}</button></div>}
       </div>
       <TrendingSidebar />
     </Layout>

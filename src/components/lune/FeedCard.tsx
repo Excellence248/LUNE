@@ -1,19 +1,20 @@
 "use client";
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { MessageCircle, Repeat2, Heart, Coins, SendHorizontal } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import TipModal from './TipModal';
-import { useSocial, Post } from '@/context/SocialContext';
+import { useSocial, type Post, type Reply } from '@/context/SocialContext';
 import { useWallet } from '@/context/WalletContext';
 import { formatDistanceToNowStrict } from 'date-fns';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { showError } from '@/utils/toast';
 import { shortWalletAddress } from '@/lib/solana-wallet';
 
 interface FeedCardProps {
   post: Post & { repostedBy?: string };
+  initialCommentsOpen?: boolean;
 }
 
 /** Highlight $TICKER cashtags and link them to the token page. */
@@ -89,44 +90,71 @@ const ActionButton = ({
   );
 };
 
-const FeedCard = ({ post }: FeedCardProps) => {
+const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardProps) => {
   const navigate = useNavigate();
   const { user: currentUser } = useWallet();
-  const { toggleLike, toggleRepost, addComment, followUser, unfollowUser, isFollowing } = useSocial();
+  const { toggleLike, toggleRepost, addComment, followUser, unfollowUser, isFollowing, followingLoading, followingError } = useSocial();
   const [isTipOpen, setIsTipOpen] = useState(false);
-  const [showComments, setShowComments] = useState(false);
+  const [showComments, setShowComments] = useState(initialCommentsOpen);
   const [commentInput, setCommentInput] = useState('');
   const [pending, setPending] = useState(false);
+  const [likeOverride, setLikeOverride] = useState<{ userId: string; active: boolean } | null>(null);
+  const [repostOverride, setRepostOverride] = useState<{ userId: string; active: boolean } | null>(null);
+  const [savedReplies, setSavedReplies] = useState<Reply[]>([]);
   const busy = useRef(false);
 
+  useEffect(() => { setLikeOverride(null); }, [sourcePost.likes, currentUser?.id]);
+  useEffect(() => { setRepostOverride(null); }, [sourcePost.reposts, currentUser?.id]);
+  useEffect(() => { setCommentInput(''); setSavedReplies([]); }, [sourcePost.id, currentUser?.id]);
+
+  const post = {
+    ...sourcePost,
+    likes: likeOverride ? [...(sourcePost.likes || []).filter(row => row.user_id !== likeOverride.userId), ...(likeOverride.active ? [{ user_id: likeOverride.userId }] : [])] : sourcePost.likes,
+    reposts: repostOverride ? [...(sourcePost.reposts || []).filter(row => row.user_id !== repostOverride.userId), ...(repostOverride.active ? [{ user_id: repostOverride.userId }] : [])] : sourcePost.reposts,
+    replies: [...(sourcePost.replies || []), ...savedReplies.filter(reply => !sourcePost.replies?.some(row => row.id === reply.id))],
+  };
   const isLiked = currentUser ? post.likes?.some(l => l.user_id === currentUser.id) : false;
   const isReposted = currentUser ? post.reposts?.some(r => r.user_id === currentUser.id) : false;
   const following = isFollowing(post.user_id);
   const isOwnPost = currentUser?.id === post.user_id;
 
-  const handleAction = async (action: () => Promise<void>) => {
+  const handleAction = async (action: () => Promise<unknown>) => {
     if (busy.current) return false;
     busy.current = true;
     setPending(true);
     try {
       await action();
       return true;
-    } catch {
-      showError('The action could not be saved. Check your wallet session and try again.');
+    } catch (error) {
+      showError(error instanceof Error ? error.message : 'The action could not be saved. Check your wallet session and try again.');
       return false;
     } finally { busy.current = false; setPending(false); }
+  };
+
+  const handleReaction = async (kind: 'like' | 'repost') => {
+    if (!currentUser) return;
+    const author = currentUser.id;
+    let active = false;
+    const succeeded = await handleAction(async () => { active = await (kind === 'like' ? toggleLike(post.id) : toggleRepost(post.id)); });
+    if (succeeded) {
+      if (kind === 'like') setLikeOverride({ userId: author, active });
+      else setRepostOverride({ userId: author, active });
+    }
   };
 
   const handleComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!commentInput.trim() || !currentUser) return;
-    if (await handleAction(() => addComment(post.id, commentInput))) setCommentInput('');
+    let reply: Reply | undefined;
+    if (await handleAction(async () => { reply = await addComment(post.id, commentInput); })) {
+      const savedReply = reply;
+      if (savedReply) setSavedReplies(previous => [...previous, savedReply]);
+      setCommentInput('');
+    }
   };
 
   const navigateToProfile = (username?: string) => {
-    if (username) {
-      navigate(`/profile/${username}`);
-    }
+    if (username) navigate(`/profile/${encodeURIComponent(username)}`);
   };
 
   const goToTicker = (sym: string) => navigate(`/token/${encodeURIComponent(sym)}`);
@@ -169,12 +197,13 @@ const FeedCard = ({ post }: FeedCardProps) => {
             </button>
             {displayUsername && <span className="text-white/35 truncate hidden sm:inline">@{displayName}</span>}
             <span className="text-white/25">·</span>
-            <time dateTime={post.created_at} title={new Date(post.created_at).toLocaleString()} className="text-white/35 text-sm shrink-0">
-              {shortAgo(post.created_at)}
-            </time>
+            <Link to={`/post/${post.id}`} aria-label="Open post and replies" className="shrink-0 text-sm text-white/35 hover:underline">
+              <time dateTime={post.created_at} title={new Date(post.created_at).toLocaleString()}>{shortAgo(post.created_at)}</time>
+            </Link>
             {!isOwnPost && currentUser && !isRepost && (
               <button
-                disabled={pending}
+                disabled={pending || followingLoading || !!followingError}
+                title={followingError || undefined}
                 onClick={() => handleAction(() => following ? unfollowUser(post.user_id) : followUser(post.user_id))}
                 className={cn(
                   'ml-auto shrink-0 text-xs font-semibold h-7 px-3 rounded-full border transition-all disabled:opacity-50',
@@ -210,21 +239,21 @@ const FeedCard = ({ post }: FeedCardProps) => {
             <ActionButton
               icon={Repeat2}
               tone="up"
-              label={!currentUser ? 'Connect a wallet to repost' : 'Repost'}
+              label={!currentUser ? 'Connect a wallet to repost' : isReposted ? 'Undo repost' : 'Repost'}
               count={post.reposts?.length || 0}
               active={isReposted}
               disabled={!currentUser || pending}
-              onClick={() => handleAction(() => toggleRepost(post.id))}
+              onClick={() => handleReaction('repost')}
             />
             <ActionButton
               icon={Heart}
               tone="pink"
-              label={!currentUser ? 'Connect a wallet to like' : 'Like'}
+              label={!currentUser ? 'Connect a wallet to like' : isLiked ? 'Unlike' : 'Like'}
               count={post.likes?.length || 0}
               active={isLiked}
               fill
               disabled={!currentUser || pending}
-              onClick={() => handleAction(() => toggleLike(post.id))}
+              onClick={() => handleReaction('like')}
             />
             <ActionButton icon={Coins} tone="amber" label="Tip (unavailable)" onClick={() => setIsTipOpen(true)} />
           </div>
@@ -252,7 +281,7 @@ const FeedCard = ({ post }: FeedCardProps) => {
                         </button>
                         <span className="text-white/30">{shortAgo(reply.created_at)}</span>
                       </div>
-                      <p className="selectable text-sm text-white/70 leading-relaxed break-words">{reply.content}</p>
+                      <p className="selectable whitespace-pre-wrap text-sm text-white/70 leading-relaxed break-words">{reply.content}</p>
                     </div>
                   </div>
                 ))
