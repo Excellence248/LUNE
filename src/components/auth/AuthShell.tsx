@@ -12,7 +12,7 @@ const AuthShell = ({ title, description, children }: { title: string; descriptio
     <main className="lune-backdrop flex min-h-screen flex-col text-white">
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-6 sm:px-8">
         <LuneLogo />
-        <Link to="/" className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-white/60 transition-colors hover:bg-white/5 hover:text-white"><ArrowLeft size={15} /> Browse feed</Link>
+        {!accountPage && <Link to="/" className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-white/60 transition-colors hover:bg-white/5 hover:text-white"><ArrowLeft size={15} /> Browse feed</Link>}
       </header>
       <div className="mx-auto grid w-full max-w-6xl flex-1 items-center gap-12 px-5 pb-10 pt-4 sm:px-8 lg:grid-cols-2 lg:gap-20 lg:py-12">
         <section className="hidden max-w-lg lg:block" aria-label="About Lune">
