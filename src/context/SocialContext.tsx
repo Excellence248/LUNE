@@ -1,9 +1,23 @@
-"use client";
-
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useWallet } from '@/context/WalletContext';
-import { showError } from '@/utils/toast';
+
+export interface PublicProfile {
+  id: string;
+  username: string;
+  wallet_address: string;
+  avatar_url: string;
+  bio: string;
+}
+
+export interface Reply {
+  id: string;
+  post_id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+  profiles?: Pick<PublicProfile, 'username' | 'avatar_url' | 'wallet_address'>;
+}
 
 export interface Post {
   id: string;
@@ -15,14 +29,10 @@ export interface Post {
   repost_content?: string;
   repost_username?: string;
   original_post_id?: string;
-  profiles?: {
-    username: string;
-    avatar_url: string;
-  };
+  profiles?: Pick<PublicProfile, 'username' | 'avatar_url' | 'wallet_address'>;
   likes?: { user_id: string }[];
   reposts?: { user_id: string }[];
-  replies?: any[];
-  token_alpha?: any;
+  replies?: Reply[];
 }
 
 export interface Notification {
@@ -42,308 +52,231 @@ interface SocialContextType {
   unreadCount: number;
   loading: boolean;
   feedError: string | null;
+  liveStatus: 'connecting' | 'live' | 'offline';
+  hasMore: boolean;
+  loadingMore: boolean;
+  loadMore: () => Promise<void>;
   notificationsLoading: boolean;
   notificationsError: string | null;
   refreshFeed: () => Promise<void>;
-  addPost: (content: string, imageUrl?: string, tokenAlpha?: any) => Promise<void>;
+  addPost: (content: string, image?: File) => Promise<void>;
   toggleLike: (postId: string) => Promise<void>;
   toggleRepost: (postId: string) => Promise<void>;
   addComment: (postId: string, content: string) => Promise<void>;
   followUser: (targetUserId: string) => Promise<void>;
   unfollowUser: (targetUserId: string) => Promise<void>;
   isFollowing: (targetUserId: string) => boolean;
-  searchUsers: (query: string) => Promise<any[]>;
-  getProfileByUsername: (username: string) => Promise<any>;
+  searchUsers: (query: string) => Promise<PublicProfile[]>;
+  getProfileByUsername: (username: string) => Promise<PublicProfile | null>;
   markNotificationsAsRead: () => Promise<void>;
 }
 
 const SocialContext = createContext<SocialContextType | undefined>(undefined);
+const postSelect = '*, profiles(username, avatar_url, wallet_address), likes(user_id), reposts(user_id), replies(*, profiles(username, avatar_url, wallet_address))';
+const imageExtensions: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
 
 export const SocialProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useWallet();
+  const userId = user?.id;
+  const currentUserId = useRef(userId);
+  currentUserId.current = userId;
   const [posts, setPosts] = useState<Post[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [followingIds, setFollowingIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [feedError, setFeedError] = useState<string | null>(null);
+  const [liveStatus, setLiveStatus] = useState<'connecting' | 'live' | 'offline'>('connecting');
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notificationsError, setNotificationsError] = useState<string | null>(null);
+  const visibleCount = useRef(50);
+  const requestNumber = useRef(0);
+  const busyRelations = useRef(new Set<string>());
 
-  const unreadCount = notifications.filter(n => !n.read).length;
-
-  const fetchPosts = async () => {
+  const fetchPosts = useCallback(async () => {
+    const request = ++requestNumber.current;
     try {
-      const { data, error } = await supabase
-        .from('posts')
-        .select(`
-          *,
-          profiles(username, avatar_url),
-          likes (user_id),
-          reposts (user_id),
-          replies (
-            *,
-            profiles(username, avatar_url)
-          )
-        `)
-        .order('created_at', { ascending: false });
-
-      if (!error) {
-        setPosts(data || []);
-        setFeedError(null);
-      } else {
-        setPosts([]);
-        setFeedError('Posts could not be loaded from the database.');
-        console.error("Error fetching posts:", error);
-      }
-    } catch (err) {
-      setPosts([]);
-      setFeedError('Posts could not be loaded from the database.');
-      console.error("Error fetching posts:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchNotifications = async () => {
-    if (!user) return;
-    setNotificationsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('notifications')
-        .select(`
-          *,
-          actor_profile:actor_id(username, avatar_url)
-        `)
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
+      const { data, error } = await supabase.from('posts').select(postSelect)
+        .order('created_at', { ascending: false }).order('id', { ascending: false })
+        .order('created_at', { referencedTable: 'replies', ascending: true })
+        .limit(visibleCount.current + 1);
       if (error) throw error;
-      setNotifications(data || []);
-      setNotificationsError(null);
-    } catch (err) {
-      setNotifications([]);
-      setNotificationsError('Notifications could not be loaded from the database.');
-      console.error("Error fetching notifications:", err);
+      if (request !== requestNumber.current) return;
+      setHasMore((data?.length || 0) > visibleCount.current);
+      setPosts((data || []).slice(0, visibleCount.current) as unknown as Post[]);
+      setFeedError(null);
+    } catch {
+      if (request === requestNumber.current) setFeedError('The public feed could not be loaded. Please retry.');
     } finally {
-      setNotificationsLoading(false);
+      if (request === requestNumber.current) setLoading(false);
     }
-  };
-
-  const fetchFollowing = async () => {
-    if (!user) return;
-    try {
-      const { data, error } = await supabase
-        .from('follows')
-        .select('following_id')
-        .eq('follower_id', user.id);
-
-      if (!error && data) {
-        setFollowingIds(data.map(f => f.following_id));
-      }
-    } catch (err) {
-      console.error("Error fetching following:", err);
-    }
-  };
-
-  useEffect(() => {
-    fetchPosts();
-    if (user) {
-      fetchFollowing();
-      fetchNotifications();
-    } else {
-      setFollowingIds([]);
-      setNotifications([]);
-      setNotificationsError(null);
-      setNotificationsLoading(false);
-    }
-  }, [user]);
-
-  // Set up real-time subscriptions
-  useEffect(() => {
-    fetchPosts();
-
-    const postChannel = supabase
-      .channel('public:posts')
-      .on('postgres_changes' as any, { event: '*', table: 'posts' }, () => fetchPosts())
-      .on('postgres_changes' as any, { event: '*', table: 'likes' }, () => fetchPosts())
-      .on('postgres_changes' as any, { event: '*', table: 'reposts' }, () => fetchPosts())
-      .on('postgres_changes' as any, { event: '*', table: 'replies' }, () => fetchPosts())
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(postChannel);
-    };
   }, []);
 
-  const addPost = async (content: string, imageUrl?: string, tokenAlpha?: any) => {
-    if (!user) throw new Error('Posting is unavailable to guests.');
-    const { error } = await supabase.from('posts').insert([
-      {
-        user_id: user.id,
-        content,
-        image_url: imageUrl,
-        post_type: 'post',
-        token_alpha: tokenAlpha
-      }
-    ]);
+  useEffect(() => {
+    fetchPosts();
+    let debounce: ReturnType<typeof setTimeout>;
+    const refresh = () => { clearTimeout(debounce); debounce = setTimeout(fetchPosts, 150); };
+    const channel = supabase.channel('live-public-feed');
+    for (const table of ['posts', 'likes', 'reposts', 'replies', 'profiles']) {
+      channel.on('postgres_changes', { event: '*', schema: 'public', table }, refresh);
+    }
+    channel.subscribe(status => {
+      setLiveStatus(status === 'SUBSCRIBED' ? 'live' : status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED' ? 'offline' : 'connecting');
+      if (status === 'SUBSCRIBED') refresh();
+    });
+    // A real refetch keeps the feed current if the change-stream connection is interrupted.
+    const interval = setInterval(fetchPosts, 30000);
+    const onVisible = () => { if (document.visibilityState === 'visible') fetchPosts(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearTimeout(debounce);
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+      supabase.removeChannel(channel);
+    };
+  }, [fetchPosts, userId]);
+
+  const fetchNotifications = useCallback(async () => {
+    if (!userId) return;
+    setNotificationsLoading(true);
+    try {
+      const { data, error } = await supabase.from('notifications')
+        .select('*, actor_profile:actor_id(username, avatar_url)').eq('user_id', userId)
+        .order('created_at', { ascending: false }).limit(100);
+      if (error) throw error;
+      if (currentUserId.current !== userId) return;
+      setNotifications((data || []) as unknown as Notification[]);
+      setNotificationsError(null);
+    } catch {
+      if (currentUserId.current === userId) setNotificationsError('Notifications could not be loaded.');
+    } finally {
+      if (currentUserId.current === userId) setNotificationsLoading(false);
+    }
+  }, [userId]);
+
+  const fetchFollowing = useCallback(async () => {
+    if (!userId) return;
+    const { data, error } = await supabase.from('follows').select('following_id').eq('follower_id', userId);
+    if (!error && currentUserId.current === userId) setFollowingIds((data || []).map(row => row.following_id));
+  }, [userId]);
+
+  useEffect(() => {
+    setNotifications([]);
+    setFollowingIds([]);
+    setNotificationsError(null);
+    setNotificationsLoading(false);
+    if (!userId) return;
+    fetchNotifications();
+    fetchFollowing();
+    const channel = supabase.channel(`account-feed:${userId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` }, fetchNotifications)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'follows', filter: `follower_id=eq.${userId}` }, fetchFollowing)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [userId, fetchNotifications, fetchFollowing]);
+
+  const loadMore = async () => {
+    if (loadingMore) return;
+    setLoadingMore(true);
+    visibleCount.current += 50;
+    try { await fetchPosts(); } finally { setLoadingMore(false); }
+  };
+
+  const requireWallet = () => {
+    if (!userId) throw new Error('Connect and sign in with a wallet first.');
+    return userId;
+  };
+
+  const addPost = async (content: string, image?: File) => {
+    const author = requireWallet();
+    const text = content.trim();
+    if (text.length > 2000) throw new Error('Posts must be 2,000 characters or fewer.');
+    if (!text && !image) throw new Error('Write something or attach an image.');
+    let imageUrl: string | undefined;
+    let path: string | undefined;
+    if (image) {
+      const extension = imageExtensions[image.type];
+      if (!extension || image.size > 5 * 1024 * 1024) throw new Error('Choose a JPG, PNG, WebP, or GIF image up to 5MB.');
+      path = `${author}/${crypto.randomUUID()}.${extension}`;
+      const { error } = await supabase.storage.from('feed-media').upload(path, image, { contentType: image.type });
+      if (error) throw error;
+      imageUrl = supabase.storage.from('feed-media').getPublicUrl(path).data.publicUrl;
+    }
+    const { error } = await supabase.from('posts').insert({ user_id: author, content: text, image_url: imageUrl });
+    if (error) {
+      if (path) await supabase.storage.from('feed-media').remove([path]);
+      throw error;
+    }
+    await fetchPosts();
+  };
+
+  const toggleRelation = async (table: 'likes' | 'reposts', postId: string) => {
+    const author = requireWallet();
+    const key = `${table}:${postId}`;
+    if (busyRelations.current.has(key)) return;
+    busyRelations.current.add(key);
+    try {
+      const { data: existing, error: readError } = await supabase.from(table).select('user_id').eq('post_id', postId).eq('user_id', author).maybeSingle();
+      if (readError) throw readError;
+      const { error } = existing
+        ? await supabase.from(table).delete().eq('post_id', postId).eq('user_id', author)
+        : await supabase.from(table).insert({ post_id: postId, user_id: author });
+      if (error && error.code !== '23505') throw error;
+      await fetchPosts();
+    } finally { busyRelations.current.delete(key); }
+  };
+
+  const addComment = async (postId: string, content: string) => {
+    const author = requireWallet();
+    const text = content.trim();
+    if (!text || text.length > 1000) throw new Error('Replies must contain 1–1,000 characters.');
+    const { error } = await supabase.from('replies').insert({ post_id: postId, user_id: author, content: text });
     if (error) throw error;
     await fetchPosts();
   };
 
-  const toggleLike = async (postId: string) => {
-    if (!user) return;
-    const post = posts.find(p => p.id === postId);
-    const isLiked = post?.likes?.some(l => l.user_id === user.id);
-
-    if (isLiked) {
-      await supabase.from('likes').delete().eq('post_id', postId).eq('user_id', user.id);
-    } else {
-      await supabase.from('likes').insert([{ post_id: postId, user_id: user.id }]);
-      if (post && post.user_id !== user.id) {
-        await supabase.from('notifications').insert([{
-          user_id: post.user_id,
-          actor_id: user.id,
-          type: 'like',
-          post_id: postId
-        }]);
-      }
-    }
-    fetchPosts();
-  };
-
-  const toggleRepost = async (postId: string) => {
-    if (!user) return;
-    const post = posts.find(p => p.id === postId);
-    if (!post) return;
-
-    const isReposted = post.reposts?.some(r => r.user_id === user.id);
-
-    if (isReposted) {
-      await supabase.from('reposts').delete().eq('post_id', postId).eq('user_id', user.id);
-      showError("Repost removed");
-    } else {
-      await supabase.from('posts').insert([{
-        user_id: user.id,
-        content: '',
-        post_type: 'repost',
-        repost_content: post.content,
-        repost_username: post.profiles?.username || 'Anonymous',
-        original_post_id: post.id,
-      }]);
-      await supabase.from('reposts').insert([{ post_id: postId, user_id: user.id }]);
-      if (post.user_id !== user.id) {
-        await supabase.from('notifications').insert([{
-          user_id: post.user_id,
-          actor_id: user.id,
-          type: 'repost',
-          post_id: postId
-        }]);
-      }
-    }
-    fetchPosts();
-  };
-
-  const addComment = async (postId: string, content: string) => {
-    if (!user) return;
-    const post = posts.find(p => p.id === postId);
-    const { error } = await supabase.from('replies').insert([
-      { post_id: postId, user_id: user.id, content }
-    ]);
-    
-    if (error) {
-      showError("Failed to reply.");
-      console.error("Error adding comment:", error);
-    } else {
-      if (post && post.user_id !== user.id) {
-        await supabase.from('notifications').insert([{
-          user_id: post.user_id,
-          actor_id: user.id,
-          type: 'reply',
-          post_id: postId
-        }]);
-      }
-      fetchPosts();
-    }
-  };
-
   const followUser = async (targetUserId: string) => {
-    if (!user || targetUserId === user.id) return;
-    const { error } = await supabase
-      .from('follows')
-      .insert([{ follower_id: user.id, following_id: targetUserId }]);
-
-    if (!error) {
-      setFollowingIds(prev => [...prev, targetUserId]);
-      await supabase.from('notifications').insert([{
-        user_id: targetUserId,
-        actor_id: user.id,
-        type: 'follow'
-      }]);
-    }
+    const author = requireWallet();
+    if (author === targetUserId) return;
+    const { error } = await supabase.from('follows').insert({ follower_id: author, following_id: targetUserId });
+    if (error && error.code !== '23505') throw error;
+    await fetchFollowing();
   };
-
   const unfollowUser = async (targetUserId: string) => {
-    if (!user) return;
-    const { error } = await supabase
-      .from('follows')
-      .delete()
-      .eq('follower_id', user.id)
-      .eq('following_id', targetUserId);
-    
-    if (!error) {
-      setFollowingIds(prev => prev.filter(id => id !== targetUserId));
-    }
+    const author = requireWallet();
+    const { error } = await supabase.from('follows').delete().eq('follower_id', author).eq('following_id', targetUserId);
+    if (error) throw error;
+    await fetchFollowing();
   };
 
-  const isFollowing = (targetUserId: string) => followingIds.includes(targetUserId);
-
-  const searchUsers = async (query: string) => {
+  const searchUsers = useCallback(async (query: string): Promise<PublicProfile[]> => {
     if (!query.trim()) return [];
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, username, avatar_url, bio')
-        .ilike('username', `%${query}%`)
-        .limit(10);
-      if (error) throw error;
-      return data || [];
-    } catch (err) {
-      console.error("Error searching users:", err);
-      return [];
-    }
-  };
+    const { data, error } = await supabase.from('profiles').select('id, username, avatar_url, bio, wallet_address').ilike('username', `%${query.trim()}%`).limit(10);
+    if (error) throw error;
+    return data || [];
+  }, []);
 
-  const getProfileByUsername = async (username: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('username', username)
-        .single();
-      return data;
-    } catch (err) {
-      console.error("Error getting profile:", err);
-      return null;
-    }
-  };
+  const getProfileByUsername = useCallback(async (username: string): Promise<PublicProfile | null> => {
+    const { data, error } = await supabase.from('profiles').select('*').eq('username', username).maybeSingle();
+    if (error) return null;
+    return data;
+  }, []);
 
-  const markNotificationsAsRead = async () => {
-    if (!user) return;
-    const { error } = await supabase
-      .from('notifications')
-      .update({ read: true })
-      .eq('user_id', user.id)
-      .eq('read', false);
-    
-    if (!error) fetchNotifications();
-  };
+  const markNotificationsAsRead = useCallback(async () => {
+    if (!userId) return;
+    const { error } = await supabase.from('notifications').update({ read: true }).eq('user_id', userId).eq('read', false);
+    if (!error) await fetchNotifications();
+  }, [userId, fetchNotifications]);
 
   return (
     <SocialContext.Provider value={{
-      posts, notifications, unreadCount, loading, feedError, notificationsLoading, notificationsError,
-      refreshFeed: fetchPosts, addPost, toggleLike,
-      toggleRepost, addComment, followUser, unfollowUser, isFollowing,
-      searchUsers, getProfileByUsername, markNotificationsAsRead
+      posts, notifications, unreadCount: notifications.filter(row => !row.read).length,
+      loading, feedError, liveStatus, hasMore, loadingMore, loadMore,
+      notificationsLoading, notificationsError, refreshFeed: fetchPosts, addPost,
+      toggleLike: postId => toggleRelation('likes', postId), toggleRepost: postId => toggleRelation('reposts', postId),
+      addComment, followUser, unfollowUser, isFollowing: targetUserId => followingIds.includes(targetUserId),
+      searchUsers, getProfileByUsername, markNotificationsAsRead,
     }}>
       {children}
     </SocialContext.Provider>

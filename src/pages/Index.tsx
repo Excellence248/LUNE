@@ -19,7 +19,7 @@ const PostSkeleton = () => (
 );
 
 const Index = () => {
-  const { posts, refreshFeed, loading, feedError } = useSocial();
+  const { posts, refreshFeed, loading, feedError, liveStatus, hasMore, loadMore, loadingMore } = useSocial();
   const [refreshing, setRefreshing] = useState(false);
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -34,7 +34,13 @@ const Index = () => {
     <Layout noPadding className="flex justify-center gap-8 xl:px-8">
       <div className="flex-1 w-full max-w-2xl min-w-0 lg:border-x border-white/[0.06] bg-background/40">
         <div className="sticky top-16 lg:top-[72px] z-30 px-4 md:px-6 h-14 flex items-center justify-between border-b border-white/[0.06] bg-[hsl(260_40%_3%/0.75)] backdrop-blur-2xl">
-          <h1 className="font-display text-lg font-bold">Home</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="font-display text-lg font-bold">Home</h1>
+            <span className="text-[11px] text-white/40 flex items-center gap-1.5" title={liveStatus === 'live' ? 'Connected to the live feed' : 'The feed also refreshes every 30 seconds'}>
+              <span className={`h-1.5 w-1.5 rounded-full ${liveStatus === 'live' ? 'bg-emerald-400' : 'bg-amber-300'}`} />
+              {liveStatus === 'live' ? 'Live' : liveStatus === 'connecting' ? 'Connecting…' : 'Auto-refresh'}
+            </span>
+          </div>
           <button
             aria-label="Refresh feed"
             disabled={refreshing || loading}
@@ -62,6 +68,7 @@ const Index = () => {
           ) : feedError ? (
             <EmptyState icon={AlertTriangle} title="Feed couldn't load">
               <span role="alert">{feedError}</span>
+              <button onClick={handleRefresh} disabled={refreshing} className="lune-btn h-9 mt-4 block mx-auto">{refreshing ? 'Retrying…' : 'Retry'}</button>
             </EmptyState>
           ) : posts.length ? (
             posts.map(post => <FeedCard key={post.id} post={post} />)
@@ -71,6 +78,7 @@ const Index = () => {
             </EmptyState>
           )}
         </div>
+        {!feedError && hasMore && <div className="p-5 flex justify-center"><button onClick={loadMore} disabled={loadingMore} className="lune-btn h-9">{loadingMore ? 'Loading…' : 'Load older posts'}</button></div>}
       </div>
       <TrendingSidebar />
     </Layout>

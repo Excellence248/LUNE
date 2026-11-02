@@ -16,9 +16,11 @@ import WalletModal from './WalletModal';
 import PriceTicker from './PriceTicker';
 import { LuneLogo } from './Brand';
 import { useWallet } from '@/context/WalletContext';
-import { useSocial } from '@/context/SocialContext';
+import { useSocial, PublicProfile } from '@/context/SocialContext';
 import { useNavigate } from 'react-router-dom';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { shortWalletAddress } from '@/lib/solana-wallet';
+import { showError } from '@/utils/toast';
 
 const iconBtn =
   'relative h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/[0.06] transition-colors';
@@ -31,7 +33,8 @@ const TopBar = () => {
   const { searchUsers, unreadCount } = useSocial();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<PublicProfile[]>([]);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
@@ -46,18 +49,28 @@ const TopBar = () => {
   }, []);
 
   useEffect(() => {
+    let active = true;
     const delayDebounceFn = setTimeout(async () => {
       if (searchQuery.trim()) {
-        const results = await searchUsers(searchQuery);
-        setSearchResults(results);
+        try {
+          const results = await searchUsers(searchQuery);
+          if (!active) return;
+          setSearchResults(results);
+          setSearchError(null);
+        } catch {
+          if (!active) return;
+          setSearchResults([]);
+          setSearchError('People search is unavailable. Please retry.');
+        }
         setIsSearching(true);
       } else {
         setSearchResults([]);
+        setSearchError(null);
         setIsSearching(false);
       }
     }, 300);
 
-    return () => clearTimeout(delayDebounceFn);
+    return () => { active = false; clearTimeout(delayDebounceFn); };
   }, [searchQuery, searchUsers]);
 
   const handleUserClick = (username: string) => {
@@ -66,7 +79,7 @@ const TopBar = () => {
     navigate(`/profile/${username}`);
   };
 
-  const displayName = user?.username || user?.email?.split('@')[0] || 'Account';
+  const displayName = user ? (user.username === user.walletAddress ? shortWalletAddress(user.walletAddress) : user.username) : 'Wallet';
 
   return (
     <header className="h-16 lg:h-[72px] border-b border-white/[0.06] bg-[hsl(260_40%_3%/0.7)] backdrop-blur-2xl sticky top-0 z-40 px-3 md:px-6 lg:px-10 flex items-center justify-between gap-3">
@@ -101,7 +114,7 @@ const TopBar = () => {
             <div className="absolute top-full left-0 right-0 mt-2 bg-popover/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_20px_60px_-10px_rgba(0,0,0,0.8)] overflow-hidden z-50">
               <div className="p-2">
                 <p className="text-[10px] font-semibold text-white/35 uppercase tracking-widest px-3 py-2">People</p>
-                {searchResults.length === 0 && (
+                {searchError ? <p role="alert" className="px-3 pb-3 text-sm text-red-300">{searchError}</p> : searchResults.length === 0 && (
                   <p className="px-3 pb-3 text-sm text-white/40">No users match “{searchQuery}”.</p>
                 )}
                 {searchResults.map(result => (
@@ -160,7 +173,7 @@ const TopBar = () => {
             >
               <DropdownMenuLabel className="px-2.5 py-2">
                 <p className="text-sm font-semibold truncate">{displayName}</p>
-                <p className="text-xs font-normal text-white/40 truncate">{user?.email}</p>
+                <p className="text-xs font-normal text-white/40 truncate" title={user?.walletAddress}>{user?.walletAddress}</p>
               </DropdownMenuLabel>
               <DropdownMenuSeparator className="bg-white/10" />
               <DropdownMenuItem onClick={() => navigate('/profile')} className="rounded-xl gap-2.5 py-2 focus:bg-white/[0.06]">
@@ -171,20 +184,21 @@ const TopBar = () => {
               </DropdownMenuItem>
               <DropdownMenuSeparator className="bg-white/10" />
               <DropdownMenuItem
-                onClick={disconnect}
+                onClick={() => disconnect().catch(() => showError('Wallet sign-out failed. Please retry.'))}
                 className="rounded-xl gap-2.5 py-2 text-red-300 focus:text-red-200 focus:bg-red-500/10"
               >
-                <LogOut size={16} /> Log out
+                <LogOut size={16} /> Disconnect
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         ) : (
           <button
             onClick={() => setIsWalletOpen(true)}
+            aria-label="Connect wallet"
             className="flex items-center gap-2 h-10 px-3 md:px-4 rounded-full border border-white/10 bg-white/[0.03] text-white/60 hover:text-white hover:border-lune-400/40 text-xs font-semibold transition-all"
           >
             <Wallet size={15} />
-            <span className="hidden sm:inline">Wallet unavailable</span>
+            <span className="hidden sm:inline">Connect wallet</span>
           </button>
         )}
       </div>

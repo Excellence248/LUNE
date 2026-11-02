@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { MessageCircle, Repeat2, Heart, Coins, SendHorizontal } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
@@ -9,6 +9,8 @@ import { useSocial, Post } from '@/context/SocialContext';
 import { useWallet } from '@/context/WalletContext';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
+import { showError } from '@/utils/toast';
+import { shortWalletAddress } from '@/lib/solana-wallet';
 
 interface FeedCardProps {
   post: Post & { repostedBy?: string };
@@ -94,18 +96,31 @@ const FeedCard = ({ post }: FeedCardProps) => {
   const [isTipOpen, setIsTipOpen] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [commentInput, setCommentInput] = useState('');
+  const [pending, setPending] = useState(false);
+  const busy = useRef(false);
 
   const isLiked = currentUser ? post.likes?.some(l => l.user_id === currentUser.id) : false;
   const isReposted = currentUser ? post.reposts?.some(r => r.user_id === currentUser.id) : false;
   const following = isFollowing(post.user_id);
   const isOwnPost = currentUser?.id === post.user_id;
 
-  const handleComment = (e: React.FormEvent) => {
+  const handleAction = async (action: () => Promise<void>) => {
+    if (busy.current) return false;
+    busy.current = true;
+    setPending(true);
+    try {
+      await action();
+      return true;
+    } catch {
+      showError('The action could not be saved. Check your wallet session and try again.');
+      return false;
+    } finally { busy.current = false; setPending(false); }
+  };
+
+  const handleComment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!commentInput.trim()) return;
-    if (!currentUser) return;
-    addComment(post.id, commentInput);
-    setCommentInput('');
+    if (!commentInput.trim() || !currentUser) return;
+    if (await handleAction(() => addComment(post.id, commentInput))) setCommentInput('');
   };
 
   const navigateToProfile = (username?: string) => {
@@ -118,6 +133,7 @@ const FeedCard = ({ post }: FeedCardProps) => {
 
   const isRepost = post.post_type === 'repost';
   const displayUsername = isRepost ? post.repost_username : post.profiles?.username;
+  const displayName = displayUsername && displayUsername === post.profiles?.wallet_address ? shortWalletAddress(displayUsername) : displayUsername;
   const body = isRepost && post.repost_content ? post.repost_content : post.content;
 
   return (
@@ -147,19 +163,21 @@ const FeedCard = ({ post }: FeedCardProps) => {
             <button
               onClick={() => navigateToProfile(displayUsername)}
               className="font-semibold text-white hover:underline truncate"
+              title={post.profiles?.wallet_address}
             >
-              {displayUsername || 'Anonymous'}
+              {displayName || 'Wallet user'}
             </button>
-            {displayUsername && <span className="text-white/35 truncate hidden sm:inline">@{displayUsername}</span>}
+            {displayUsername && <span className="text-white/35 truncate hidden sm:inline">@{displayName}</span>}
             <span className="text-white/25">·</span>
             <time dateTime={post.created_at} title={new Date(post.created_at).toLocaleString()} className="text-white/35 text-sm shrink-0">
               {shortAgo(post.created_at)}
             </time>
             {!isOwnPost && currentUser && !isRepost && (
               <button
-                onClick={() => (following ? unfollowUser(post.user_id) : followUser(post.user_id))}
+                disabled={pending}
+                onClick={() => handleAction(() => following ? unfollowUser(post.user_id) : followUser(post.user_id))}
                 className={cn(
-                  'ml-auto shrink-0 text-xs font-semibold h-7 px-3 rounded-full border transition-all',
+                  'ml-auto shrink-0 text-xs font-semibold h-7 px-3 rounded-full border transition-all disabled:opacity-50',
                   following
                     ? 'border-white/10 text-white/50 hover:text-red-300 hover:border-red-400/30'
                     : 'border-lune-400/40 text-lune-200 bg-lune-500/10 hover:bg-lune-500/20'
@@ -192,21 +210,21 @@ const FeedCard = ({ post }: FeedCardProps) => {
             <ActionButton
               icon={Repeat2}
               tone="up"
-              label={!currentUser ? 'Reposting requires an account session' : 'Repost'}
+              label={!currentUser ? 'Connect a wallet to repost' : 'Repost'}
               count={post.reposts?.length || 0}
               active={isReposted}
-              disabled={!currentUser}
-              onClick={() => toggleRepost(post.id)}
+              disabled={!currentUser || pending}
+              onClick={() => handleAction(() => toggleRepost(post.id))}
             />
             <ActionButton
               icon={Heart}
               tone="pink"
-              label={!currentUser ? 'Liking requires an account session' : 'Like'}
+              label={!currentUser ? 'Connect a wallet to like' : 'Like'}
               count={post.likes?.length || 0}
               active={isLiked}
               fill
-              disabled={!currentUser}
-              onClick={() => toggleLike(post.id)}
+              disabled={!currentUser || pending}
+              onClick={() => handleAction(() => toggleLike(post.id))}
             />
             <ActionButton icon={Coins} tone="amber" label="Tip (unavailable)" onClick={() => setIsTipOpen(true)} />
           </div>
@@ -247,13 +265,16 @@ const FeedCard = ({ post }: FeedCardProps) => {
                   <input
                     type="text"
                     value={commentInput}
+                    disabled={pending}
+                    maxLength={1000}
+                    aria-label="Write a public reply"
                     onChange={e => setCommentInput(e.target.value)}
-                    placeholder="Post your reply"
+                    placeholder="Post your public reply"
                     className="lune-input rounded-full px-4 py-2"
                   />
                   <button
                     type="submit"
-                    disabled={!commentInput.trim()}
+                    disabled={!commentInput.trim() || pending}
                     aria-label="Send reply"
                     className="lune-btn h-9 w-9 px-0 shrink-0"
                   >
@@ -261,7 +282,7 @@ const FeedCard = ({ post }: FeedCardProps) => {
                   </button>
                 </form>
               ) : (
-                <p className="text-xs text-white/35 px-1">Replying requires an account session.</p>
+                <p className="text-xs text-white/35 px-1">Connect a wallet to reply.</p>
               )}
             </div>
           )}
