@@ -21,7 +21,7 @@ interface WalletContextType {
   authError: string | null;
   connectWallet: (name: WalletName) => Promise<void>;
   disconnect: () => Promise<void>;
-  updateProfile: (data: Partial<User>) => Promise<void>;
+  updateProfile: (data: Partial<Pick<User, 'username' | 'bio' | 'avatar'>>) => Promise<void>;
 }
 
 interface WalletProfile {
@@ -167,18 +167,23 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     setProvider(null);
   };
 
-  const updateProfile = async (data: Partial<User>) => {
+  const updateProfile = async (data: Partial<Pick<User, 'username' | 'bio' | 'avatar'>>) => {
     if (!user) throw new Error('Connect and sign in with a wallet to edit your profile.');
     const changes = {
-      username: data.username ?? user.username,
+      username: (data.username ?? user.username).trim(),
       bio: data.bio ?? user.bio,
       avatar_url: data.avatar ?? user.avatar,
     };
     if (!/^[A-Za-z0-9_]{3,64}$/.test(changes.username)) throw new Error('Use 3–64 letters, numbers, or underscores for your display handle.');
     if (changes.bio.length > 500) throw new Error('Your bio must be 500 characters or fewer.');
+    if (changes.avatar_url.length > 3000000) throw new Error('Your avatar must be 2 MB or smaller.');
     const { data: profile, error } = await supabase.from('profiles').update(changes).eq('id', user.id).select().single();
-    if (error) throw error;
-    setUser(mapProfile(profile as WalletProfile, user.email));
+    if (error) {
+      if (error.code === '23505') throw new Error('That username is already taken. Please choose another.');
+      if (error.code === '42501' || error.code === 'PGRST116') throw new Error('Your wallet session could not authorize this update. Reconnect your wallet and try again.');
+      throw new Error('Your profile could not be saved. Check your connection and try again.');
+    }
+    setUser(previous => previous?.id === user.id ? mapProfile(profile as WalletProfile, previous.email) : previous);
   };
 
   return (

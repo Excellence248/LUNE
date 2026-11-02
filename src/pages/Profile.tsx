@@ -1,175 +1,71 @@
-"use client";
-
-import React, { useState, useRef } from 'react';
+import { Link } from 'react-router-dom';
+import { ArrowUpRight, Loader2, UserRound, Wallet } from 'lucide-react';
 import Layout from '@/components/lune/Layout';
-import FeedCard from '@/components/lune/FeedCard';
-import { Edit3, Camera, UserRound } from 'lucide-react';
 import ProfileHero from '@/components/lune/ProfileHero';
+import ProfileEditor from '@/components/lune/ProfileEditor';
+import ProfileActivity from '@/components/lune/ProfileActivity';
 import { EmptyState } from '@/components/lune/Brand';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useWallet } from '@/context/WalletContext';
-import { useSocial } from '@/context/SocialContext';
-import { showSuccess, showError } from '@/utils/toast';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
 
 const Profile = () => {
-  const { user, updateProfile } = useWallet();
-  const { posts } = useSocial();
-  const [loading, setLoading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [editData, setEditData] = useState({ 
-    username: user?.username || '', 
-    bio: user?.bio || '',
-    avatar: user?.avatar || ''
-  });
+  const { user, loading, authError } = useWallet();
 
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        showError("Image size must be less than 2MB");
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setEditData({ ...editData, avatar: reader.result as string });
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleSave = async () => {
-    if (!user) return;
-    setLoading(true);
-    try {
-      await updateProfile(editData);
-      showSuccess("Profile updated!");
-    } catch (error) {
-      showError("Failed to update profile");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const userPosts = posts.filter(p =>
-    p.user_id === user?.id || p.reposts?.some(r => r.user_id === user?.id)
-  );
+  if (loading) {
+    return <Layout><div role="status" className="flex items-center justify-center gap-3 py-20 text-white/50"><Loader2 className="h-5 w-5 animate-spin" /> Loading your profile…</div></Layout>;
+  }
 
   if (!user) {
     return (
       <Layout>
-        <div className="lune-card max-w-lg mx-auto mt-10">
-          <EmptyState icon={UserRound} title="Profile unavailable">
-            You're browsing as a guest. No personal profile or account statistics are available.
+        <div className="lune-card mx-auto mt-10 max-w-lg">
+          <EmptyState icon={UserRound} title={authError ? 'Profile could not be loaded' : 'Your profile starts here'}>
+            {authError || 'Connect your wallet using the button above to edit your profile and see your activity.'}
           </EmptyState>
         </div>
       </Layout>
     );
   }
 
-  const displayName = user.username || user.email?.split('@')[0] || 'Account profile';
-
   return (
-    <Layout noPadding>
-      <ProfileHero
-        name={displayName}
-        handle={user.username}
-        subtitle={user.email}
-        avatarUrl={user.avatar}
-        bio={user.bio ?? ''}
-        footnote="Reputation and follower totals are unavailable."
-        actions={
-          <Dialog
-            onOpenChange={open => {
-              if (open) setEditData({ username: user.username || '', bio: user.bio || '', avatar: user.avatar || '' });
-            }}
-          >
-            <DialogTrigger asChild>
-              <button className="h-10 px-5 rounded-full border border-white/15 bg-white/[0.03] text-sm font-semibold hover:bg-white/[0.08] transition-colors flex items-center gap-2">
-                <Edit3 size={15} /> Edit profile
-              </button>
-            </DialogTrigger>
-            <DialogContent className="bg-popover/95 backdrop-blur-2xl border-white/10 text-white rounded-3xl max-w-md">
-              <DialogHeader>
-                <DialogTitle className="font-display text-xl">Edit profile</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-5 pt-2">
-                <div className="flex flex-col items-center gap-3">
-                  <button
-                    type="button"
-                    className="relative group rounded-full"
-                    onClick={() => fileInputRef.current?.click()}
-                    aria-label="Change avatar"
-                  >
-                    <Avatar className="w-24 h-24 ring-2 ring-lune-400/40">
-                      <AvatarImage src={editData.avatar} className="object-cover" />
-                      <AvatarFallback className="bg-gradient-to-br from-lune-400 to-lune-800 text-2xl font-bold">
-                        {editData.username?.[0]?.toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Camera size={22} />
-                    </span>
-                  </button>
-                  <input type="file" ref={fileInputRef} onChange={handleImageSelect} accept="image/*" className="hidden" />
-                  <p className="text-xs text-white/40">Tap to change avatar · max 2MB</p>
-                </div>
+    <Layout>
+      <div className="mx-auto max-w-5xl space-y-7">
+        <header className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-lune-300">Personal profile</p>
+            <h1 className="font-display text-2xl font-bold md:text-3xl">Your corner of Lune</h1>
+            <p className="mt-2 text-sm text-white/45">Make it yours. Share what matters.</p>
+          </div>
+          <Link to={`/profile/${encodeURIComponent(user.username)}`} className="inline-flex items-center gap-2 text-sm text-white/60 transition-colors hover:text-white">View public profile <ArrowUpRight size={16} /></Link>
+        </header>
 
-                <div className="space-y-2">
-                  <Label htmlFor="edit-username" className="text-white/60 text-xs">Username</Label>
-                  <input
-                    id="edit-username"
-                    value={editData.username}
-                    onChange={e => setEditData({ ...editData, username: e.target.value })}
-                    className="lune-input px-4 py-3"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-bio" className="text-white/60 text-xs">Bio</Label>
-                  <textarea
-                    id="edit-bio"
-                    value={editData.bio}
-                    onChange={e => setEditData({ ...editData, bio: e.target.value })}
-                    className="lune-input px-4 py-3 h-28 resize-none"
-                  />
-                </div>
-                <button onClick={handleSave} disabled={loading} className="lune-btn w-full h-11">
-                  {loading ? 'Saving…' : 'Save changes'}
-                </button>
-              </div>
-            </DialogContent>
-          </Dialog>
-        }
-      />
-
-      <div className="max-w-4xl px-4 md:px-10 mt-8">
-        <div className="border-b border-white/[0.06] flex">
-          <span className="relative px-1 pb-3 text-sm font-semibold">
-            Your posts
-            <span className="absolute inset-x-0 -bottom-px h-[3px] rounded-full bg-lune-400" />
-          </span>
+        <div className="overflow-hidden rounded-3xl border border-white/10 bg-black/20 pb-7">
+          <ProfileHero name={user.username} handle={user.username} avatarUrl={user.avatar} bio={user.bio} actions={<ProfileEditor key={user.id} />} />
         </div>
-        <div className="divide-y divide-white/[0.06] -mx-4 md:-mx-6">
-          {userPosts.length > 0 ? (
-            userPosts.map(post => (
-              <FeedCard
-                key={post.id}
-                post={{
-                  ...post,
-                  repostedBy: post.user_id !== user?.id ? user?.username : undefined,
-                }}
-              />
-            ))
-          ) : (
-            <EmptyState title="No posts yet">Share your first bit of alpha from the feed.</EmptyState>
-          )}
+
+        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_260px]">
+          <section className="min-w-0 overflow-hidden rounded-3xl border border-white/10 bg-black/20" aria-label="Your activity">
+            <Tabs defaultValue="posts">
+              <div className="border-b border-white/10 px-5 pt-5 md:px-6">
+                <h2 className="mb-4 font-display text-lg font-semibold">Your activity</h2>
+                <TabsList className="h-auto gap-6 rounded-none bg-transparent p-0">
+                  <TabsTrigger value="posts" className="rounded-none border-b-2 border-transparent px-1 pb-3 pt-0 text-white/45 data-[state=active]:border-lune-400 data-[state=active]:bg-transparent data-[state=active]:text-white data-[state=active]:shadow-none">Posts</TabsTrigger>
+                  <TabsTrigger value="reposts" className="rounded-none border-b-2 border-transparent px-1 pb-3 pt-0 text-white/45 data-[state=active]:border-lune-400 data-[state=active]:bg-transparent data-[state=active]:text-white data-[state=active]:shadow-none">Reposts</TabsTrigger>
+                </TabsList>
+              </div>
+              <TabsContent value="posts" className="mt-0"><ProfileActivity key={`${user.id}-posts`} user={user} kind="posts" /></TabsContent>
+              <TabsContent value="reposts" className="mt-0"><ProfileActivity key={`${user.id}-reposts`} user={user} kind="reposts" /></TabsContent>
+            </Tabs>
+          </section>
+
+          <aside className="space-y-4 rounded-3xl border border-white/10 bg-white/[0.02] p-5">
+            <div className="flex items-center gap-2 text-sm font-semibold"><Wallet size={16} className="text-lune-300" /> Connected identity</div>
+            <div>
+              <p className="mb-2 text-xs text-white/40">Solana wallet</p>
+              <p className="break-all font-mono text-xs leading-6 text-white/70">{user.walletAddress}</p>
+            </div>
+            <p className="border-t border-white/10 pt-4 text-xs leading-relaxed text-white/40">Your wallet identifies your account. Your username, photo, and bio can be changed without changing your wallet.</p>
+          </aside>
         </div>
       </div>
     </Layout>
