@@ -1,7 +1,8 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AppWrapper } from "./components/lune/AppWrapper";
 import RequireAccount from "./components/auth/RequireAccount";
-import Login from "./pages/Login";
+import SignIn from "./pages/SignIn";
+import SignUp from "./pages/SignUp";
 import AuthCallback from "./pages/AuthCallback";
 import EmailLink from "./pages/EmailLink";
 import ResetPassword from "./pages/ResetPassword";
@@ -39,8 +40,8 @@ const App = () => (
   <AppWrapper>
     <BrowserRouter>
       <Routes>
-        <Route path="/signin" element={<Login />} />
-        <Route path="/signup" element={<Login view="sign_up" />} />
+        <Route path="/signin" element={<SignIn />} />
+        <Route path="/signup" element={<SignUp />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/forgot-password" element={<EmailLink purpose="recovery" />} />
         <Route path="/confirm-email" element={<EmailLink purpose="confirmation" />} />
