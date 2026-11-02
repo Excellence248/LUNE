@@ -21,16 +21,6 @@ interface WalletContextType {
   connect: () => void;
   disconnect: () => void;
   loading: boolean;
-  signIn: (email: string, password?: string) => Promise<{ error: any }>;
-  signUp: (email: string, password: string, username: string) => Promise<{ error: any }>;
-  signInWithOtp: (email: string) => Promise<{ error: any }>;
-  verifyOtp: (email: string, token: string) => Promise<{ error: any }>;
-  resetPassword: (email: string) => Promise<{ error: any }>;
-  updateEmail: (newEmail: string) => Promise<{ error: any }>;
-  updatePassword: (newPassword: string) => Promise<{ error: any }>;
-  reauthenticate: () => Promise<{ error: any }>;
-  deleteAccount: () => Promise<{ error: any }>;
-  resendVerificationEmail: (email: string) => Promise<{ error: any }>;
   updateProfile: (data: Partial<User>) => Promise<void>;
   updateBalance: (amount: number) => void;
 }
@@ -137,89 +127,6 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     });
   };
 
-  const signIn = async (email: string, password?: string) => {
-    setLoading(true);
-    const result = await supabase.auth.signInWithPassword({
-      email,
-      password: password || '',
-    });
-    if (result.error) setLoading(false);
-    return result;
-  };
-
-  const signUp = async (email: string, password: string, username: string) => {
-    setLoading(true);
-    const result = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/signin`,
-        data: {
-          username,
-          bio: "New to Lune Protocol! 🚀",
-        }
-      }
-    });
-    if (result.error) setLoading(false);
-    return result;
-  };
-
-  const signInWithOtp = async (email: string) => {
-    setLoading(true);
-    const result = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${window.location.origin}/signin`,
-      }
-    });
-    if (result.error) setLoading(false);
-    return result;
-  };
-
-  const verifyOtp = async (email: string, token: string) => {
-    setLoading(true);
-    const result = await supabase.auth.verifyOtp({
-      email,
-      token,
-      type: 'magiclink'
-    });
-    if (result.error) setLoading(false);
-    return result;
-  };
-
-  const resetPassword = async (email: string) => {
-    return await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/settings`,
-    });
-  };
-
-  const updateEmail = async (newEmail: string) => {
-    return await supabase.auth.updateUser({ email: newEmail });
-  };
-
-  const updatePassword = async (newPassword: string) => {
-    return await supabase.auth.updateUser({ password: newPassword });
-  };
-
-  const reauthenticate = async () => {
-    return await supabase.auth.reauthenticate();
-  };
-
-  const deleteAccount = async () => {
-    await supabase.auth.signOut();
-    return { error: null };
-  };
-
-  const resendVerificationEmail = async (email: string) => {
-    return await supabase.auth.resend({
-      type: 'signup',
-      email,
-      options: {
-        emailRedirectTo: `${window.location.origin}/signin`,
-      }
-    });
-  };
-
   const updateProfile = async (data: Partial<User>) => {
     if (!user) return;
     const { error } = await supabase.auth.updateUser({
@@ -250,11 +157,9 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <WalletContext.Provider value={{ 
-      isConnected, isAuthenticated: !!user, user, address, balance, 
-      connect, disconnect, loading, signIn, signUp, signInWithOtp, verifyOtp,
-      resetPassword, updateEmail, updatePassword, reauthenticate, deleteAccount,
-      resendVerificationEmail, updateProfile, updateBalance 
+    <WalletContext.Provider value={{
+      isConnected, isAuthenticated: !!user, user, address, balance,
+      connect, disconnect, loading, updateProfile, updateBalance
     }}>
       {children}
     </WalletContext.Provider>

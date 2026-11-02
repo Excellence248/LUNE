@@ -1,6 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AppWrapper } from "./components/lune/AppWrapper";
-import { useWallet } from "./context/WalletContext";
 import Index from "./pages/Index";
 import Launchpad from "./pages/Launchpad";
 import LaunchpadDetail from "./pages/LaunchpadDetail";
@@ -28,64 +27,41 @@ import Analytics from "./pages/Analytics";
 import DegenTools from "./pages/DegenTools";
 import Staking from "./pages/Staking";
 import TokenDetail from "./pages/TokenDetail";
-import SignIn from "./pages/SignIn";
-import SignUp from "./pages/SignUp";
 import NotFound from "./pages/NotFound";
-
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { isAuthenticated, loading } = useWallet();
-  
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return <Navigate to="/signin" replace />;
-  }
-  return <>{children}</>;
-};
 
 const App = () => (
   <AppWrapper>
     <BrowserRouter>
       <Routes>
-        {/* Public Routes */}
-        <Route path="/signin" element={<SignIn />} />
-        <Route path="/signup" element={<SignUp />} />
-
-        {/* Protected Routes */}
-        <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
-        <Route path="/explorer" element={<ProtectedRoute><Explorer /></ProtectedRoute>} />
-        <Route path="/token/:symbol" element={<ProtectedRoute><TokenDetail /></ProtectedRoute>} />
-        <Route path="/launchpad" element={<ProtectedRoute><Launchpad /></ProtectedRoute>} />
-        <Route path="/launchpad/:id" element={<ProtectedRoute><LaunchpadDetail /></ProtectedRoute>} />
-        <Route path="/degen-tools" element={<ProtectedRoute><DegenTools /></ProtectedRoute>} />
-        <Route path="/staking" element={<ProtectedRoute><Staking /></ProtectedRoute>} />
-        <Route path="/spaces" element={<ProtectedRoute><Spaces /></ProtectedRoute>} />
-        <Route path="/spaces/:id" element={<ProtectedRoute><LiveSpace /></ProtectedRoute>} />
-        <Route path="/wallet" element={<ProtectedRoute><Wallet /></ProtectedRoute>} />
-        <Route path="/jobs" element={<ProtectedRoute><Jobs /></ProtectedRoute>} />
-        <Route path="/communities" element={<ProtectedRoute><Communities /></ProtectedRoute>} />
-        <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-        <Route path="/profile/:username" element={<ProtectedRoute><UserProfile /></ProtectedRoute>} />
-        <Route path="/trade/:symbol" element={<ProtectedRoute><Trade /></ProtectedRoute>} />
-        <Route path="/demo-trade" element={<ProtectedRoute><DemoTrade /></ProtectedRoute>} />
-        <Route path="/nfts" element={<ProtectedRoute><NFTs /></ProtectedRoute>} />
-        <Route path="/live-auction" element={<ProtectedRoute><LiveAuction /></ProtectedRoute>} />
-        <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
-        <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-        <Route path="/governance" element={<ProtectedRoute><Governance /></ProtectedRoute>} />
-        <Route path="/messages" element={<ProtectedRoute><Messages /></ProtectedRoute>} />
-        <Route path="/leaderboard" element={<ProtectedRoute><Leaderboard /></ProtectedRoute>} />
-        <Route path="/rewards" element={<ProtectedRoute><Rewards /></ProtectedRoute>} />
-        <Route path="/bridge" element={<ProtectedRoute><Bridge /></ProtectedRoute>} />
-        <Route path="/referrals" element={<ProtectedRoute><Referrals /></ProtectedRoute>} />
-        <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
-        
+        <Route path="/signin" element={<Navigate to="/" replace />} />
+        <Route path="/signup" element={<Navigate to="/" replace />} />
+        <Route path="/" element={<Index />} />
+        <Route path="/explorer" element={<Explorer />} />
+        <Route path="/token/:symbol" element={<TokenDetail />} />
+        <Route path="/launchpad" element={<Launchpad />} />
+        <Route path="/launchpad/:id" element={<LaunchpadDetail />} />
+        <Route path="/degen-tools" element={<DegenTools />} />
+        <Route path="/staking" element={<Staking />} />
+        <Route path="/spaces" element={<Spaces />} />
+        <Route path="/spaces/:id" element={<LiveSpace />} />
+        <Route path="/wallet" element={<Wallet />} />
+        <Route path="/jobs" element={<Jobs />} />
+        <Route path="/communities" element={<Communities />} />
+        <Route path="/profile" element={<Profile />} />
+        <Route path="/profile/:username" element={<UserProfile />} />
+        <Route path="/trade/:symbol" element={<Trade />} />
+        <Route path="/demo-trade" element={<DemoTrade />} />
+        <Route path="/nfts" element={<NFTs />} />
+        <Route path="/live-auction" element={<LiveAuction />} />
+        <Route path="/notifications" element={<Notifications />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/governance" element={<Governance />} />
+        <Route path="/messages" element={<Messages />} />
+        <Route path="/leaderboard" element={<Leaderboard />} />
+        <Route path="/rewards" element={<Rewards />} />
+        <Route path="/bridge" element={<Bridge />} />
+        <Route path="/referrals" element={<Referrals />} />
+        <Route path="/analytics" element={<Analytics />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>
