@@ -41,6 +41,9 @@ interface SocialContextType {
   notifications: Notification[];
   unreadCount: number;
   loading: boolean;
+  feedError: string | null;
+  notificationsLoading: boolean;
+  notificationsError: string | null;
   refreshFeed: () => Promise<void>;
   addPost: (content: string, imageUrl?: string, tokenAlpha?: any) => Promise<void>;
   toggleLike: (postId: string) => Promise<void>;
@@ -62,6 +65,9 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [followingIds, setFollowingIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [feedError, setFeedError] = useState<string | null>(null);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notificationsError, setNotificationsError] = useState<string | null>(null);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -83,10 +89,15 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
 
       if (!error) {
         setPosts(data || []);
+        setFeedError(null);
       } else {
+        setPosts([]);
+        setFeedError('Posts could not be loaded from the database.');
         console.error("Error fetching posts:", error);
       }
     } catch (err) {
+      setPosts([]);
+      setFeedError('Posts could not be loaded from the database.');
       console.error("Error fetching posts:", err);
     } finally {
       setLoading(false);
@@ -95,6 +106,7 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
 
   const fetchNotifications = async () => {
     if (!user) return;
+    setNotificationsLoading(true);
     try {
       const { data, error } = await supabase
         .from('notifications')
@@ -105,9 +117,15 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (!error) setNotifications(data || []);
+      if (error) throw error;
+      setNotifications(data || []);
+      setNotificationsError(null);
     } catch (err) {
+      setNotifications([]);
+      setNotificationsError('Notifications could not be loaded from the database.');
       console.error("Error fetching notifications:", err);
+    } finally {
+      setNotificationsLoading(false);
     }
   };
 
@@ -132,6 +150,11 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
     if (user) {
       fetchFollowing();
       fetchNotifications();
+    } else {
+      setFollowingIds([]);
+      setNotifications([]);
+      setNotificationsError(null);
+      setNotificationsLoading(false);
     }
   }, [user]);
 
@@ -153,23 +176,18 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const addPost = async (content: string, imageUrl?: string, tokenAlpha?: any) => {
-    if (!user) return;
+    if (!user) throw new Error('Posting is unavailable to guests.');
     const { error } = await supabase.from('posts').insert([
-      { 
-        user_id: user.id, 
-        content, 
+      {
+        user_id: user.id,
+        content,
         image_url: imageUrl,
         post_type: 'post',
-        token_alpha: tokenAlpha 
+        token_alpha: tokenAlpha
       }
     ]);
-    
-    if (error) {
-      showError("Failed to post alpha.");
-      console.error("Error adding post:", error);
-    } else {
-      fetchPosts();
-    }
+    if (error) throw error;
+    await fetchPosts();
   };
 
   const toggleLike = async (postId: string) => {
@@ -285,8 +303,9 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
       const { data, error } = await supabase
         .from('profiles')
         .select('id, username, avatar_url, bio')
-        .or(`username.ilike.%${query}%,id.eq.${query}`)
+        .ilike('username', `%${query}%`)
         .limit(10);
+      if (error) throw error;
       return data || [];
     } catch (err) {
       console.error("Error searching users:", err);
@@ -320,8 +339,9 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <SocialContext.Provider value={{ 
-      posts, notifications, unreadCount, loading, refreshFeed: fetchPosts, addPost, toggleLike, 
+    <SocialContext.Provider value={{
+      posts, notifications, unreadCount, loading, feedError, notificationsLoading, notificationsError,
+      refreshFeed: fetchPosts, addPost, toggleLike,
       toggleRepost, addComment, followUser, unfollowUser, isFollowing,
       searchUsers, getProfileByUsername, markNotificationsAsRead
     }}>

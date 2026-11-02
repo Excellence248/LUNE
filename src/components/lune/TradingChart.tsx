@@ -95,7 +95,7 @@ const TradingChart = ({ data, symbol }: TradingChartProps) => {
           {symbol}
         </div>
         <div className="px-3 py-1 bg-white/5 border border-white/10 rounded-lg text-[10px] font-bold text-gray-500">
-          1m
+          1h
         </div>
       </div>
       <div ref={chartContainerRef} className="w-full h-full" />

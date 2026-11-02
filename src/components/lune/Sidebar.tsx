@@ -55,7 +55,7 @@ export const navItems = [
 
 export const SidebarContent = ({ onClose }: { onClose?: () => void }) => {
   const location = useLocation();
-  const { isConnected, disconnect } = useWallet();
+  const { isAuthenticated, disconnect } = useWallet();
 
   return (
     <div className="flex flex-col h-full bg-[#050505]">
@@ -95,26 +95,14 @@ export const SidebarContent = ({ onClose }: { onClose?: () => void }) => {
       </nav>
 
       <div className="p-4 mt-auto space-y-2">
-        <div className="bg-gradient-to-br from-gray-900 to-black border border-white/10 rounded-2xl p-4 relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-20 h-20 bg-purple-600/10 blur-2xl rounded-full -mr-10 -mt-10 group-hover:bg-purple-600/20 transition-all" />
-          <p className="text-xs text-gray-500 mb-1">Reputation Score</p>
-          <div className="flex items-center gap-2">
-            <span className="text-xl font-bold text-white">2,450</span>
-            <span className="text-[10px] px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded border border-green-500/30">+12%</span>
-          </div>
-          <div className="mt-3 h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-            <div className="h-full w-[65%] bg-gradient-to-r from-purple-500 to-blue-500 shadow-[0_0_10px_rgba(168,85,247,0.5)]" />
-          </div>
-        </div>
-        
         <div className="flex flex-col gap-1">
           <Link to="/settings" onClick={onClose} className="flex items-center gap-3 px-4 py-3 text-gray-500 hover:text-white transition-colors rounded-xl hover:bg-white/5">
             <Settings size={20} />
             <span className="font-medium">Settings</span>
           </Link>
 
-          {isConnected && (
-            <button 
+          {isAuthenticated && (
+            <button
               onClick={() => {
                 disconnect();
                 onClose?.();

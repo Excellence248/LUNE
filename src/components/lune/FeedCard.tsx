@@ -94,9 +94,6 @@ const FeedCard = ({ post }: FeedCardProps) => {
                 </button>
               )}
             </div>
-            <button className="text-gray-600 hover:text-white transition-colors p-1">
-              <MoreHorizontal size={16} />
-            </button>
           </div>
 
           <p className="text-gray-300 text-sm md:text-base leading-relaxed mb-3 whitespace-pre-wrap break-words">
@@ -117,10 +114,12 @@ const FeedCard = ({ post }: FeedCardProps) => {
               <MessageSquare size={16} />
               <span className="text-xs">{post.replies?.length || 0}</span>
             </button>
-            <button 
+            <button
+              disabled={!currentUser}
+              title={!currentUser ? 'Reposting requires an account session' : 'Repost'}
               onClick={() => toggleRepost(post.id)}
               className={cn(
-                "flex items-center gap-1.5 transition-colors group/btn",
+                "flex items-center gap-1.5 transition-colors group/btn disabled:opacity-50",
                 isReposted ? "text-green-400" : "hover:text-green-400"
               )}
             >
@@ -129,10 +128,12 @@ const FeedCard = ({ post }: FeedCardProps) => {
               </div>
               <span className="text-xs">{post.reposts?.length || 0}</span>
             </button>
-            <button 
+            <button
+              disabled={!currentUser}
+              title={!currentUser ? 'Liking requires an account session' : 'Like'}
               onClick={() => toggleLike(post.id)}
               className={cn(
-                "flex items-center gap-1.5 transition-colors group/btn",
+                "flex items-center gap-1.5 transition-colors group/btn disabled:opacity-50",
                 isLiked ? "text-pink-400" : "hover:text-pink-400"
               )}
             >
@@ -145,13 +146,8 @@ const FeedCard = ({ post }: FeedCardProps) => {
               onClick={() => setIsTipOpen(true)}
               className="flex items-center gap-1.5 hover:text-yellow-400 transition-colors group/btn"
             >
-              <div className="p-2 rounded-full group-hover/btn:bg-yellow-400/10">
+              <div className="p-2 rounded-full group-hover/btn:bg-yellow-400/10" title="Tipping unavailable">
                 <DollarSign size={16} />
-              </div>
-            </button>
-            <button className="flex items-center gap-1.5 hover:text-purple-400 transition-colors group/btn">
-              <div className="p-2 rounded-full group-hover/btn:bg-purple-400/10">
-                <Share2 size={16} />
               </div>
             </button>
           </div>

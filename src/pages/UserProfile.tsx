@@ -71,7 +71,8 @@ const UserProfile = () => {
     return (
       <Layout>
         <div className="text-center py-20">
-          <h2 className="text-2xl font-bold">User not found</h2>
+          <h2 className="text-2xl font-bold">Profile unavailable</h2>
+          <p className="text-gray-400 mt-2">No profile was returned, or the database request could not be completed.</p>
           <Button onClick={() => navigate('/')} className="mt-4">Back to Feed</Button>
         </div>
       </Layout>
@@ -98,13 +99,15 @@ const UserProfile = () => {
           <div className="flex gap-3 pb-4">
             {!isMe && (
               <>
-                <Button 
-                  onClick={() => navigate('/messages')}
-                  className="bg-white/10 text-white border border-white/10 px-6 py-3 rounded-2xl font-bold hover:bg-white/20 flex items-center gap-2"
+                <Button
+                  disabled
+                  className="bg-white/10 text-white border border-white/10 px-6 py-3 rounded-2xl font-bold flex items-center gap-2"
                 >
-                  <MessageSquare size={18} /> Message
+                  <MessageSquare size={18} /> Messaging unavailable
                 </Button>
-                <Button 
+                <Button
+                  disabled={!currentUser}
+                  title={!currentUser ? 'Following requires an account session' : undefined}
                   onClick={() => following ? unfollowUser(profile.id) : followUser(profile.id)}
                   className={following ? "bg-white/5 text-gray-400 border border-white/10" : "bg-purple-600 text-white"}
                 >
@@ -119,7 +122,6 @@ const UserProfile = () => {
           <div>
             <div className="flex items-center gap-3 mb-1">
               <h1 className="text-3xl md:text-4xl font-bold tracking-tight">{profile.username}</h1>
-              <Shield className="text-blue-400" size={20} />
             </div>
             <p className="text-gray-500 font-mono text-sm">@{profile.username}</p>
           </div>

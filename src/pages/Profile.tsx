@@ -58,10 +58,18 @@ const Profile = () => {
     }
   };
 
-  // Filter posts where user is author OR user has reposted
-  const userPosts = posts.filter(p => 
+  const userPosts = posts.filter(p =>
     p.user_id === user?.id || p.reposts?.some(r => r.user_id === user?.id)
   );
+
+  if (!user) {
+    return (
+      <Layout>
+        <h1 className="text-3xl font-bold mb-4">Profile unavailable</h1>
+        <p className="text-gray-400">You are browsing as a guest. No personal profile or account statistics are available.</p>
+      </Layout>
+    );
+  }
 
   return (
     <Layout noPadding>
@@ -143,8 +151,7 @@ const Profile = () => {
         <div className="space-y-6">
           <div>
             <div className="flex items-center gap-3 mb-1">
-              <h1 className="text-3xl md:text-4xl font-bold tracking-tight">{user?.username || 'User'}</h1>
-              <Shield className="text-blue-400" size={20} />
+              <h1 className="text-3xl md:text-4xl font-bold tracking-tight">{user?.username || 'Account profile'}</h1>
             </div>
             <p className="text-gray-500 font-mono text-sm">{user?.email}</p>
           </div>
@@ -153,20 +160,7 @@ const Profile = () => {
             {user?.bio || "No bio set yet."}
           </p>
 
-          <div className="grid grid-cols-3 gap-8 py-6 border-y border-white/5">
-            <div className="text-center md:text-left">
-              <p className="text-xs text-gray-500 font-bold uppercase">Reputation</p>
-              <p className="text-xl font-bold">2,450</p>
-            </div>
-            <div className="text-center md:text-left">
-              <p className="text-xs text-gray-500 font-bold uppercase">Followers</p>
-              <p className="text-xl font-bold">0</p>
-            </div>
-            <div className="text-center md:text-left">
-              <p className="text-xs text-gray-500 font-bold uppercase">Posts</p>
-              <p className="text-xl font-bold">{userPosts.length}</p>
-            </div>
-          </div>
+          <p className="text-sm text-gray-500">Reputation and follower totals are unavailable. Posts below are returned by the app database.</p>
 
           <div className="pt-8">
             <h3 className="text-xl font-bold mb-6">Your Alpha</h3>

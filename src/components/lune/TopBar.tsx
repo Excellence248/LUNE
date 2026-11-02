@@ -15,7 +15,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 const TopBar = () => {
   const navigate = useNavigate();
   const [isWalletOpen, setIsWalletOpen] = useState(false);
-  const { isConnected, address, disconnect } = useWallet();
+  const { isAuthenticated, user, disconnect } = useWallet();
   const { searchUsers, unreadCount } = useSocial();
   
   const [searchQuery, setSearchQuery] = useState('');
@@ -71,11 +71,11 @@ const TopBar = () => {
         <div className="flex-1 max-w-xl relative group hidden sm:block" ref={searchRef}>
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-purple-400 transition-colors" size={18} />
           <input 
-            type="text" 
+            type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onFocus={() => searchQuery && setIsSearching(true)}
-            placeholder="Search users or alpha..." 
+            placeholder="Search usernames..."
             className="w-full bg-white/5 border border-white/10 rounded-full py-2 pl-12 pr-4 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500/50 transition-all"
           />
 
@@ -124,22 +124,23 @@ const TopBar = () => {
 
         <div className="h-6 w-[1px] bg-white/10 hidden xs:block" />
 
-        {isConnected ? (
-          <Button 
+        {isAuthenticated ? (
+          <Button
             onClick={disconnect}
             className="bg-white/[0.03] backdrop-blur-2xl border border-white/10 hover:bg-white/10 text-white rounded-xl h-10 px-4 lg:px-6 shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)] flex items-center gap-2 text-xs font-bold transition-all"
           >
             <LogOut size={14} className="text-red-400" />
-            <span className="hidden xs:inline">{address} (Log Out)</span>
+            <span className="hidden xs:inline">{user?.email} (Log Out)</span>
             <span className="xs:hidden">Log Out</span>
           </Button>
         ) : (
-          <Button 
+          <Button
+            variant="outline"
             onClick={() => setIsWalletOpen(true)}
-            className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white border-none rounded-xl h-10 px-4 lg:px-6 shadow-[0_0_20px_rgba(147,51,234,0.3)] flex items-center gap-2 text-xs font-bold transition-all"
+            className="bg-white/5 border-white/10 text-gray-400 rounded-xl h-10 px-4 text-xs"
           >
             <Wallet size={14} />
-            <span>Connect Wallet</span>
+            <span>Wallet unavailable</span>
           </Button>
         )}
       </div>

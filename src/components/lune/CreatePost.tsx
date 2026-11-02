@@ -31,12 +31,20 @@ const CreatePost = () => {
   };
 
   const handlePost = async () => {
-    if (!content.trim() && !image) return;
-    await addPost(content, image || undefined);
-    setContent('');
-    setImage(null);
-    showSuccess("Alpha posted to the feed!");
+    if (!user || (!content.trim() && !image)) return;
+    try {
+      await addPost(content, image || undefined);
+      setContent('');
+      setImage(null);
+      showSuccess('Post saved to the database.');
+    } catch {
+      showError('Post could not be saved.');
+    }
   };
+
+  if (!user) {
+    return <p className="p-4 md:p-6 border-b border-white/5 text-sm text-gray-500">Guest browsing is read-only. Posting requires an account session.</p>;
+  }
 
   return (
     <div className="p-4 md:p-6 border-b border-white/5 bg-white/[0.01]">
@@ -83,15 +91,9 @@ const CreatePost = () => {
               >
                 <ImageIcon size={18} />
               </button>
-              <button className="p-2 hover:bg-purple-500/10 rounded-full transition-colors">
-                <Zap size={18} />
-              </button>
-              <button className="p-2 hover:bg-purple-500/10 rounded-full transition-colors">
-                <BarChart2 size={18} />
-              </button>
             </div>
             
-            <Button 
+            <Button
               onClick={handlePost}
               disabled={!content.trim() && !image}
               size="sm"

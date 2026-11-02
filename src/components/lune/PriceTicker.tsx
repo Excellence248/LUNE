@@ -9,7 +9,8 @@ const PriceTicker = () => {
   const prices = usePrices();
 
   return (
-    <div className="hidden xl:flex items-center gap-6 px-4 py-1 bg-white/5 rounded-full border border-white/10 overflow-hidden">
+    <div title="CoinGecko USD quotes, 24-hour change; requested every 30 seconds" className="hidden xl:flex items-center gap-6 px-4 py-1 bg-white/5 rounded-full border border-white/10 overflow-hidden">
+      {!prices.length && <span className="text-xs text-gray-500">Market quotes unavailable or loading</span>}
       {prices.map((p) => (
         <div key={p.symbol} className="flex items-center gap-2 whitespace-nowrap">
           <span className="text-[10px] font-bold text-gray-500">{p.symbol}</span>

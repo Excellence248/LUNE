@@ -22,11 +22,18 @@ import { useNavigate } from 'react-router-dom';
 
 const Explorer = () => {
   const navigate = useNavigate();
-  const { tokens, loading } = useTokenData();
-  const [activeTab, setActiveTab] = useState<'All' | 'Major' | 'Memecoin'>('All');
+  const { tokens, loading, error, updatedAt } = useTokenData();
+  const [activeTab, setActiveTab] = useState<'All' | 'Major' | 'DEX'>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedChain, setSelectedChain] = useState<string>('All');
   const [sortConfig, setSortConfig] = useState<{ key: keyof TokenInfo; direction: 'asc' | 'desc' } | null>(null);
+
+  const openToken = (token: TokenInfo) => {
+    const query = token.category === 'Major'
+      ? `coinId=${encodeURIComponent(token.address)}`
+      : `address=${encodeURIComponent(token.address)}&chain=${encodeURIComponent(token.chain)}`;
+    navigate(`/token/${encodeURIComponent(token.symbol)}?${query}`);
+  };
 
   const chains = useMemo(() => {
     const uniqueChains = Array.from(new Set(tokens.map(t => t.chain)));
@@ -77,14 +84,16 @@ const Explorer = () => {
         <div className="space-y-2">
           <div className="flex items-center gap-3 text-purple-400 font-bold text-sm uppercase tracking-widest">
             <TrendingUp size={16} />
-            Live Market Pulse
+            API-backed market quotes
           </div>
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight">
             Market Explorer
           </h1>
           <p className="text-gray-500 text-lg max-w-2xl">
-            Real-time analytics for the most active assets across Solana, Ethereum, and Base.
+            Selected major assets from CoinGecko and token search results from DexScreener. Requested every minute; this is not a trending or performance ranking.
           </p>
+          {updatedAt && <p className="text-xs text-gray-500">Retrieved {new Date(updatedAt).toLocaleString()}</p>}
+          {error && <p className="text-sm text-amber-400" role="alert">{error}</p>}
         </div>
 
         <div className="flex flex-col sm:flex-row gap-4 w-full lg:w-auto">
@@ -110,7 +119,7 @@ const Explorer = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.1 }}
-              onClick={() => navigate(`/token/${token.symbol}`)}
+              onClick={() => openToken(token)}
               className="bg-gradient-to-br from-white/5 to-transparent border border-white/10 rounded-[2rem] p-6 hover:border-purple-500/30 transition-all cursor-pointer group relative overflow-hidden"
             >
               <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
@@ -120,8 +129,8 @@ const Explorer = () => {
                 <div className="w-12 h-12 rounded-2xl bg-purple-600/20 flex items-center justify-center text-purple-400 font-bold">
                   {token.symbol[0]}
                 </div>
-                <div className="px-3 py-1 rounded-full bg-green-500/10 text-green-400 text-[10px] font-bold border border-green-500/20">
-                  HOT 🔥
+                <div className="px-3 py-1 rounded-full bg-white/5 text-gray-400 text-[10px] font-bold border border-white/10">
+                  {token.category === 'Major' ? 'CoinGecko' : 'DexScreener'}
                 </div>
               </div>
               <h3 className="text-xl font-bold mb-1 group-hover:text-purple-400 transition-colors">{token.name}</h3>
@@ -147,10 +156,10 @@ const Explorer = () => {
       {/* Filters Bar */}
       <div className="flex flex-col md:flex-row items-center justify-between gap-6 mb-8">
         <div className="flex gap-2 p-1 bg-white/5 rounded-2xl w-full md:w-auto overflow-x-auto no-scrollbar">
-          {['All', 'Major', 'Memecoin'].map((tab) => (
+          {(['All', 'Major', 'DEX'] as const).map((tab) => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab as any)}
+              onClick={() => setActiveTab(tab)}
               className={cn(
                 "px-6 py-2.5 rounded-xl text-sm font-bold transition-all whitespace-nowrap",
                 activeTab === tab 
@@ -192,8 +201,8 @@ const Explorer = () => {
             </div>
           </div>
           <div className="text-center">
-            <p className="text-xl font-bold text-white mb-2">Syncing Market Data</p>
-            <p className="text-gray-500">Aggregating real-time feeds from multiple DEXs...</p>
+            <p className="text-xl font-bold text-white mb-2">Loading Market Data</p>
+            <p className="text-gray-500">Requesting quotes from CoinGecko and DexScreener…</p>
           </div>
         </div>
       ) : (
@@ -234,13 +243,13 @@ const Explorer = () => {
               <tbody className="divide-y divide-white/5">
                 <AnimatePresence mode="popLayout">
                   {filteredAndSortedTokens.map((token, i) => (
-                    <motion.tr 
+                    <motion.tr
                       key={token.address + i}
                       layout
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
-                      onClick={() => navigate(`/token/${token.symbol}`)}
+                      onClick={() => openToken(token)}
                       className="hover:bg-white/[0.03] transition-all cursor-pointer group"
                     >
                       <td className="px-8 py-6">
@@ -279,14 +288,9 @@ const Explorer = () => {
                       <td className="px-8 py-6 text-gray-400 text-sm font-mono">{token.volume}</td>
                       <td className="px-8 py-6 text-gray-400 text-sm font-mono">{token.mcap}</td>
                       <td className="px-8 py-6 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <button className="p-2.5 bg-white/5 text-gray-500 rounded-xl hover:bg-white/10 hover:text-white transition-all">
-                            <Star size={16} />
-                          </button>
-                          <button className="p-2.5 bg-purple-600 text-white rounded-xl hover:bg-purple-500 shadow-lg shadow-purple-500/20 transition-all">
-                            <ArrowUpRight size={16} />
-                          </button>
-                        </div>
+                        <button aria-label={`View ${token.name} market data`} className="p-2.5 bg-purple-600 text-white rounded-xl hover:bg-purple-500 transition-all">
+                          <ArrowUpRight size={16} />
+                        </button>
                       </td>
                     </motion.tr>
                   ))}

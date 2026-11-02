@@ -8,9 +8,11 @@ import { useSocial } from '@/context/SocialContext';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { useWallet } from '@/context/WalletContext';
 
 const Notifications = () => {
-  const { notifications, markNotificationsAsRead } = useSocial();
+  const { notifications, notificationsLoading, notificationsError, markNotificationsAsRead } = useSocial();
+  const { user } = useWallet();
 
   useEffect(() => {
     markNotificationsAsRead();
@@ -85,7 +87,7 @@ const Notifications = () => {
           )) : (
             <div className="py-20 text-center bg-white/5 rounded-3xl border border-white/10">
               <Bell className="mx-auto mb-4 text-gray-600" size={48} />
-              <p className="text-gray-500 font-bold">No new notifications.</p>
+              <p className="text-gray-500 font-bold">{!user ? 'Account notifications are unavailable to guests.' : notificationsLoading ? 'Loading notifications…' : notificationsError || 'No notifications were returned from the database.'}</p>
             </div>
           )}
         </div>

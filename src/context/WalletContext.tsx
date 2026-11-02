@@ -1,6 +1,4 @@
-"use client";
-
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
 import { User as SupabaseUser } from '@supabase/supabase-js';
 
@@ -13,154 +11,79 @@ interface User {
 }
 
 interface WalletContextType {
-  isConnected: boolean;
   isAuthenticated: boolean;
   user: User | null;
-  address: string | null;
-  balance: number;
-  connect: () => void;
-  disconnect: () => void;
   loading: boolean;
+  disconnect: () => Promise<void>;
   updateProfile: (data: Partial<User>) => Promise<void>;
-  updateBalance: (amount: number) => void;
 }
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined);
 
+const mapUser = (user: SupabaseUser): User => ({
+  id: user.id,
+  email: user.email || '',
+  username: user.user_metadata?.username,
+  bio: user.user_metadata?.bio,
+  avatar: user.user_metadata?.avatar,
+});
+
 export const WalletProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [address, setAddress] = useState<string | null>(null);
-  const [balance, setBalance] = useState(0.00);
-
-  const mapSupabaseUser = (sbUser: SupabaseUser): User => ({
-    id: sbUser.id,
-    email: sbUser.email || '',
-    username: sbUser.user_metadata?.username,
-    bio: sbUser.user_metadata?.bio,
-    avatar: sbUser.user_metadata?.avatar,
-  });
-
-  const ensureProfileExists = async (sbUser: SupabaseUser) => {
-    try {
-      const { data: profile, error: fetchError } = await supabase
-        .from('profiles')
-        .select('id, username')
-        .eq('id', sbUser.id)
-        .single();
-
-      const username = sbUser.user_metadata?.username || sbUser.email?.split('@')[0] || 'User';
-
-      if (!profile) {
-        await supabase.from('profiles').insert([
-          {
-            id: sbUser.id,
-            username: username,
-            avatar_url: sbUser.user_metadata?.avatar || '',
-            bio: sbUser.user_metadata?.bio || "New to Lune Protocol! 🚀",
-          }
-        ]);
-      }
-    } catch (err) {
-      console.error("Error ensuring profile exists:", err);
-    }
-  };
 
   useEffect(() => {
-    // Load balance from local storage
-    const savedBalance = localStorage.getItem('lune_balance');
-    if (savedBalance) {
-      setBalance(parseFloat(savedBalance));
-    } else {
-      const initialBalance = 48000.00;
-      setBalance(initialBalance);
-      localStorage.setItem('lune_balance', initialBalance.toString());
-    }
-
-    // Initial session check
-    const initAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          const currentUser = mapSupabaseUser(session.user);
-          setUser(currentUser);
-          setAddress(currentUser.email);
-          setIsConnected(true);
-          await ensureProfileExists(session.user);
-        }
-      } catch (error) {
-        console.error("Auth initialization error:", error);
-      } finally {
+    // Discard the previous simulated balance, including values saved before this cleanup.
+    localStorage.removeItem('lune_balance');
+    let active = true;
+    let authChanged = false;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      authChanged = true;
+      if (active) {
+        setUser(session?.user ? mapUser(session.user) : null);
         setLoading(false);
       }
-    };
-
-    initAuth();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
-        const currentUser = mapSupabaseUser(session.user);
-        setUser(currentUser);
-        setAddress(currentUser.email);
-        setIsConnected(true);
-        if (event === 'SIGNED_IN') {
-          await ensureProfileExists(session.user);
-        }
-      } else {
-        setUser(null);
-        setAddress(null);
-        setIsConnected(false);
-      }
-      setLoading(false);
     });
-
-    return () => subscription.unsubscribe();
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (!active || authChanged) return;
+      setUser(!error && data.session?.user ? mapUser(data.session.user) : null);
+      setLoading(false);
+    }).catch(() => {
+      if (active && !authChanged) setLoading(false);
+    });
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
-  const updateBalance = (amount: number) => {
-    setBalance(prev => {
-      const newBalance = prev + amount;
-      localStorage.setItem('lune_balance', newBalance.toString());
-      return newBalance;
-    });
-  };
-
   const updateProfile = async (data: Partial<User>) => {
-    if (!user) return;
-    const { error } = await supabase.auth.updateUser({
-      data: {
-        username: data.username || user.username,
-        bio: data.bio || user.bio,
-        avatar: data.avatar || user.avatar,
-      }
+    if (!user) throw new Error('Profile updates are unavailable to guests.');
+    const metadata = {
+      username: data.username ?? user.username,
+      bio: data.bio ?? user.bio,
+      avatar: data.avatar ?? user.avatar,
+    };
+    const { error } = await supabase.auth.updateUser({ data: metadata });
+    if (error) throw error;
+    const { error: profileError } = await supabase.from('profiles').upsert({
+      id: user.id,
+      username: metadata.username,
+      bio: metadata.bio,
+      avatar_url: metadata.avatar,
     });
-    
-    if (!error) {
-      await supabase.from('profiles').upsert({
-        id: user.id,
-        username: data.username || user.username,
-        bio: data.bio || user.bio,
-        avatar_url: data.avatar || user.avatar,
-      });
-      setUser(prev => prev ? { ...prev, ...data } : null);
-    }
+    if (profileError) throw profileError;
+    setUser(previous => previous ? { ...previous, ...data } : null);
   };
 
-  const connect = () => setIsConnected(true);
   const disconnect = async () => {
-    await supabase.auth.signOut();
-    setIsConnected(false);
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
     setUser(null);
-    setAddress(null);
   };
 
   return (
-    <WalletContext.Provider value={{
-      isConnected, isAuthenticated: !!user, user, address, balance,
-      connect, disconnect, loading, updateProfile, updateBalance
-    }}>
+    <WalletContext.Provider value={{ isAuthenticated: !!user, user, loading, disconnect, updateProfile }}>
       {children}
     </WalletContext.Provider>
   );
