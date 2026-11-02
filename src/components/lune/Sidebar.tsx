@@ -1,119 +1,156 @@
 "use client";
 
 import React from 'react';
-import { 
-  LayoutDashboard, 
-  Radio, 
-  Rocket, 
-  Briefcase, 
-  Wallet, 
-  Users, 
+import {
+  Home,
+  Radio,
+  Rocket,
+  Briefcase,
+  Wallet,
+  Users,
   Settings,
-  Zap,
   Image as ImageIcon,
   Bell,
   Vote,
-  MessageSquare,
+  MessageCircle,
   Trophy,
   Gift,
   ArrowRightLeft,
   UserPlus,
-  BarChart3,
+  CandlestickChart,
   PieChart,
   ShieldAlert,
   Lock,
   Gavel,
   PlayCircle,
-  LogOut
+  LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Link, useLocation } from 'react-router-dom';
 import { useWallet } from '@/context/WalletContext';
+import { LuneLogo } from './Brand';
 
-export const navItems = [
-  { icon: LayoutDashboard, label: 'Feed', path: '/' },
-  { icon: BarChart3, label: 'Explorer', path: '/explorer' },
-  { icon: MessageSquare, label: 'Messages', path: '/messages' },
-  { icon: Radio, label: 'Spaces', path: '/spaces' },
-  { icon: Gavel, label: 'Live Auction', path: '/live-auction' },
-  { icon: PlayCircle, label: 'Demo Trade', path: '/demo-trade' },
-  { icon: Rocket, label: 'Launchpad', path: '/launchpad' },
-  { icon: ShieldAlert, label: 'Degen Tools', path: '/degen-tools' },
-  { icon: Lock, label: 'Staking', path: '/staking' },
-  { icon: ImageIcon, label: 'NFTs', path: '/nfts' },
-  { icon: Trophy, label: 'Leaderboard', path: '/leaderboard' },
-  { icon: Gift, label: 'Rewards', path: '/rewards' },
-  { icon: ArrowRightLeft, label: 'Bridge', path: '/bridge' },
-  { icon: UserPlus, label: 'Referrals', path: '/referrals' },
-  { icon: Vote, label: 'Governance', path: '/governance' },
-  { icon: PieChart, label: 'Analytics', path: '/analytics' },
-  { icon: Briefcase, label: 'Jobs', path: '/jobs' },
-  { icon: Users, label: 'Communities', path: '/communities' },
-  { icon: Wallet, label: 'Wallet', path: '/wallet' },
-  { icon: Bell, label: 'Activity', path: '/notifications' },
+export const navSections = [
+  {
+    title: 'Social',
+    items: [
+      { icon: Home, label: 'Feed', path: '/' },
+      { icon: Bell, label: 'Activity', path: '/notifications' },
+      { icon: MessageCircle, label: 'Messages', path: '/messages' },
+      { icon: Radio, label: 'Spaces', path: '/spaces' },
+      { icon: Users, label: 'Communities', path: '/communities' },
+    ],
+  },
+  {
+    title: 'Markets',
+    items: [
+      { icon: CandlestickChart, label: 'Explorer', path: '/explorer' },
+      { icon: PieChart, label: 'Analytics', path: '/analytics' },
+      { icon: PlayCircle, label: 'Demo Trade', path: '/demo-trade' },
+      { icon: Rocket, label: 'Launchpad', path: '/launchpad' },
+      { icon: ShieldAlert, label: 'Degen Tools', path: '/degen-tools' },
+    ],
+  },
+  {
+    title: 'Earn & Collect',
+    items: [
+      { icon: Lock, label: 'Staking', path: '/staking' },
+      { icon: ImageIcon, label: 'NFTs', path: '/nfts' },
+      { icon: Gavel, label: 'Live Auction', path: '/live-auction' },
+      { icon: Gift, label: 'Rewards', path: '/rewards' },
+      { icon: Trophy, label: 'Leaderboard', path: '/leaderboard' },
+    ],
+  },
+  {
+    title: 'Ecosystem',
+    items: [
+      { icon: Wallet, label: 'Wallet', path: '/wallet' },
+      { icon: ArrowRightLeft, label: 'Bridge', path: '/bridge' },
+      { icon: Vote, label: 'Governance', path: '/governance' },
+      { icon: UserPlus, label: 'Referrals', path: '/referrals' },
+      { icon: Briefcase, label: 'Jobs', path: '/jobs' },
+    ],
+  },
 ];
+
+/** Flat list kept for any consumer that imported it previously. */
+export const navItems = navSections.flatMap(s => s.items);
+
+const NavLink = ({
+  icon: Icon,
+  label,
+  path,
+  active,
+  onClick,
+}: {
+  icon: React.ElementType;
+  label: string;
+  path: string;
+  active: boolean;
+  onClick?: () => void;
+}) => (
+  <Link
+    to={path}
+    onClick={onClick}
+    aria-current={active ? 'page' : undefined}
+    className={cn(
+      'relative flex items-center gap-3 px-3 py-2 rounded-xl text-[13.5px] transition-all duration-200 group',
+      active
+        ? 'text-white bg-gradient-to-r from-lune-500/20 via-lune-500/[0.07] to-transparent'
+        : 'text-white/50 hover:text-white hover:bg-white/[0.04]'
+    )}
+  >
+    {active && (
+      <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r-full bg-lune-400 shadow-[0_0_12px_2px_rgba(169,116,255,0.6)]" />
+    )}
+    <Icon
+      size={18}
+      strokeWidth={active ? 2.2 : 1.8}
+      className={cn('transition-colors', active ? 'text-lune-300' : 'group-hover:text-lune-300')}
+    />
+    <span className={cn(active ? 'font-semibold' : 'font-medium')}>{label}</span>
+  </Link>
+);
 
 export const SidebarContent = ({ onClose }: { onClose?: () => void }) => {
   const location = useLocation();
   const { isAuthenticated, disconnect } = useWallet();
 
   return (
-    <div className="flex flex-col h-full bg-[#050505]">
-      <div className="p-6 flex items-center gap-3">
-        <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-blue-500 rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(147,51,234,0.3)]">
-          <Zap className="text-white fill-white" size={24} />
-        </div>
-        <span className="text-2xl font-bold tracking-tighter text-white">LUNE</span>
+    <div className="flex flex-col h-full">
+      <div className="px-6 pt-6 pb-4">
+        <LuneLogo onClick={onClose} />
       </div>
 
-      <nav className="flex-1 px-4 py-2 space-y-1 overflow-y-auto custom-scrollbar">
-        {navItems.map((item) => {
-          const isActive = location.pathname === item.path;
-          return (
-            <Link
-              key={item.label}
-              to={item.path}
-              onClick={onClose}
-              className={cn(
-                "flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-300 group",
-                isActive 
-                  ? "bg-white/10 text-white shadow-[inset_0_0_10px_rgba(255,255,255,0.05)]" 
-                  : "text-gray-500 hover:text-white hover:bg-white/5"
-              )}
-            >
-              <item.icon size={20} className={cn(
-                "transition-colors",
-                isActive ? "text-purple-400" : "group-hover:text-purple-400"
-              )} />
-              <span className="font-medium">{item.label}</span>
-              {isActive && (
-                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.8)]" />
-              )}
-            </Link>
-          );
-        })}
+      <nav className="flex-1 px-3 pb-4 overflow-y-auto custom-scrollbar space-y-5" aria-label="Main">
+        {navSections.map(section => (
+          <div key={section.title}>
+            <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/25">
+              {section.title}
+            </p>
+            <div className="space-y-0.5">
+              {section.items.map(item => (
+                <NavLink key={item.path} {...item} active={location.pathname === item.path} onClick={onClose} />
+              ))}
+            </div>
+          </div>
+        ))}
       </nav>
 
-      <div className="p-4 mt-auto space-y-2">
-        <div className="flex flex-col gap-1">
-          <Link to="/settings" onClick={onClose} className="flex items-center gap-3 px-4 py-3 text-gray-500 hover:text-white transition-colors rounded-xl hover:bg-white/5">
-            <Settings size={20} />
-            <span className="font-medium">Settings</span>
-          </Link>
-
-          {isAuthenticated && (
-            <button
-              onClick={() => {
-                disconnect();
-                onClose?.();
-              }}
-              className="flex items-center gap-3 px-4 py-3 text-red-400/70 hover:text-red-400 transition-all rounded-xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.05] backdrop-blur-xl"
-            >
-              <LogOut size={20} />
-              <span className="font-medium">Log Out</span>
-            </button>
-          )}
-        </div>
+      <div className="p-3 border-t border-white/[0.06] space-y-0.5">
+        <NavLink icon={Settings} label="Settings" path="/settings" active={location.pathname === '/settings'} onClick={onClose} />
+        {isAuthenticated && (
+          <button
+            onClick={() => {
+              disconnect();
+              onClose?.();
+            }}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[13.5px] font-medium text-white/40 hover:text-red-300 hover:bg-red-500/[0.06] transition-all"
+          >
+            <LogOut size={18} strokeWidth={1.8} />
+            <span>Log out</span>
+          </button>
+        )}
       </div>
     </div>
   );
@@ -121,7 +158,7 @@ export const SidebarContent = ({ onClose }: { onClose?: () => void }) => {
 
 const Sidebar = () => {
   return (
-    <aside className="fixed left-0 top-0 h-screen w-64 bg-[#050505] border-r border-white/5 hidden lg:flex flex-col z-50">
+    <aside className="fixed left-0 top-0 h-screen w-72 hidden lg:flex flex-col z-50 border-r border-white/[0.06] bg-[hsl(260_40%_3.5%/0.85)] backdrop-blur-2xl">
       <SidebarContent />
     </aside>
   );

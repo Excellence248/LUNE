@@ -4,9 +4,15 @@
   "description": "Decentralized Social Finance on Solana",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#050505",
-  "theme_color": "#050505",
+  "background_color": "#07050c",
+  "theme_color": "#07050c",
   "icons": [
+    {
+      "src": "/lune-mascot.jpg",
+      "sizes": "640x640",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
     {
       "src": "/favicon.ico",
       "sizes": "64x64 32x32 24x24 16x16",

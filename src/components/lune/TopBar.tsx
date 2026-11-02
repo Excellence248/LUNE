@@ -1,23 +1,35 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Bell, Wallet, Menu, LogOut, User } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Search, Bell, Wallet, Menu, LogOut, User, Settings } from 'lucide-react';
+import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { SidebarContent } from './Sidebar';
 import WalletModal from './WalletModal';
 import PriceTicker from './PriceTicker';
+import { LuneLogo } from './Brand';
 import { useWallet } from '@/context/WalletContext';
 import { useSocial } from '@/context/SocialContext';
 import { useNavigate } from 'react-router-dom';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
+const iconBtn =
+  'relative h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/[0.06] transition-colors';
+
 const TopBar = () => {
   const navigate = useNavigate();
   const [isWalletOpen, setIsWalletOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const { isAuthenticated, user, disconnect } = useWallet();
   const { searchUsers, unreadCount } = useSocial();
-  
+
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -54,50 +66,59 @@ const TopBar = () => {
     navigate(`/profile/${username}`);
   };
 
+  const displayName = user?.username || user?.email?.split('@')[0] || 'Account';
+
   return (
-    <header className="h-16 lg:h-20 border-b border-white/5 bg-[#050505]/80 backdrop-blur-xl sticky top-0 z-40 px-4 lg:px-8 flex items-center justify-between gap-3">
+    <header className="h-16 lg:h-[72px] border-b border-white/[0.06] bg-[hsl(260_40%_3%/0.7)] backdrop-blur-2xl sticky top-0 z-40 px-3 md:px-6 lg:px-10 flex items-center justify-between gap-3">
       <div className="flex items-center gap-2 lg:gap-4 flex-1 min-w-0">
-        <Sheet>
+        <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
           <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="lg:hidden text-gray-400 hover:text-white h-9 w-9 shrink-0">
+            <button className={`${iconBtn} lg:hidden`} aria-label="Open menu">
               <Menu size={20} />
-            </Button>
+            </button>
           </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-72 bg-[#050505] border-white/5">
-            <SidebarContent />
+          <SheetContent side="left" className="p-0 w-72 bg-[hsl(260_40%_4%)] border-white/[0.06]">
+            <SheetTitle className="sr-only">Navigation</SheetTitle>
+            <SidebarContent onClose={() => setMenuOpen(false)} />
           </SheetContent>
         </Sheet>
 
-        <div className="flex-1 max-w-xl relative group hidden sm:block" ref={searchRef}>
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-purple-400 transition-colors" size={18} />
-          <input 
+        <LuneLogo className="lg:hidden" />
+
+        <div className="flex-1 max-w-md relative hidden sm:block ml-2 lg:ml-0" ref={searchRef}>
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" size={16} />
+          <input
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={e => setSearchQuery(e.target.value)}
             onFocus={() => searchQuery && setIsSearching(true)}
-            placeholder="Search usernames..."
-            className="w-full bg-white/5 border border-white/10 rounded-full py-2 pl-12 pr-4 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500/50 transition-all"
+            placeholder="Search people…"
+            aria-label="Search users"
+            className="lune-input rounded-full py-2.5 pl-11 pr-4"
           />
 
-          {isSearching && searchResults.length > 0 && (
-            <div className="absolute top-full left-0 right-0 mt-2 bg-[#050505] border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-50">
+          {isSearching && (
+            <div className="absolute top-full left-0 right-0 mt-2 bg-popover/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_20px_60px_-10px_rgba(0,0,0,0.8)] overflow-hidden z-50">
               <div className="p-2">
-                <p className="text-[10px] font-bold text-gray-500 uppercase px-3 py-2">Users</p>
-                {searchResults.map((user) => (
+                <p className="text-[10px] font-semibold text-white/35 uppercase tracking-widest px-3 py-2">People</p>
+                {searchResults.length === 0 && (
+                  <p className="px-3 pb-3 text-sm text-white/40">No users match “{searchQuery}”.</p>
+                )}
+                {searchResults.map(result => (
                   <button
-                    key={user.id}
-                    onClick={() => handleUserClick(user.username)}
-                    className="w-full flex items-center gap-3 p-3 hover:bg-white/5 rounded-xl transition-colors text-left"
+                    key={result.id}
+                    onClick={() => handleUserClick(result.username)}
+                    className="w-full flex items-center gap-3 p-2.5 hover:bg-white/[0.05] rounded-xl transition-colors text-left"
                   >
-                    <Avatar className="w-8 h-8 border border-white/10">
-                      <AvatarImage src={user.avatar_url} />
-                      <AvatarFallback className="bg-purple-900 text-purple-200 text-[10px]">
-                        {user.username?.[0] || 'U'}
+                    <Avatar className="w-9 h-9 ring-1 ring-white/10">
+                      <AvatarImage src={result.avatar_url} />
+                      <AvatarFallback className="bg-lune-900 text-lune-200 text-xs font-semibold">
+                        {result.username?.[0]?.toUpperCase() || 'U'}
                       </AvatarFallback>
                     </Avatar>
-                    <div>
-                      <p className="text-sm font-bold text-white">{user.username}</p>
-                      <p className="text-[10px] text-gray-500">View Profile</p>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-white truncate">{result.username}</p>
+                      <p className="text-xs text-white/40">@{result.username}</p>
                     </div>
                   </button>
                 ))}
@@ -105,43 +126,66 @@ const TopBar = () => {
             </div>
           )}
         </div>
-        
-        <div className="sm:hidden font-bold text-lg tracking-tighter text-white shrink-0">LUNE</div>
-        
+
         <PriceTicker />
       </div>
 
-      <div className="flex items-center gap-2 lg:gap-6">
-        <button 
-          onClick={() => navigate('/notifications')}
-          className="relative p-2 text-gray-400 hover:text-white transition-colors shrink-0"
-        >
-          <Bell size={18} />
+      <div className="flex items-center gap-1 md:gap-2">
+        <button onClick={() => navigate('/notifications')} className={iconBtn} aria-label="Activity">
+          <Bell size={19} />
           {unreadCount > 0 && (
-            <span className="absolute top-2 right-2 w-2 h-2 bg-purple-500 rounded-full border border-[#050505] animate-pulse" />
+            <span className="absolute top-2 right-2.5 w-2 h-2 bg-lune-400 rounded-full ring-2 ring-background shadow-[0_0_8px_rgba(169,116,255,0.9)]" />
           )}
         </button>
 
-        <div className="h-6 w-[1px] bg-white/10 hidden xs:block" />
-
         {isAuthenticated ? (
-          <Button
-            onClick={disconnect}
-            className="bg-white/[0.03] backdrop-blur-2xl border border-white/10 hover:bg-white/10 text-white rounded-xl h-10 px-4 lg:px-6 shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)] flex items-center gap-2 text-xs font-bold transition-all"
-          >
-            <LogOut size={14} className="text-red-400" />
-            <span className="hidden xs:inline">{user?.email} (Log Out)</span>
-            <span className="xs:hidden">Log Out</span>
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="flex items-center gap-2 rounded-full pl-1 pr-1 md:pr-3 py-1 hover:bg-white/[0.06] transition-colors"
+                aria-label="Account menu"
+              >
+                <Avatar className="w-8 h-8 ring-2 ring-lune-500/40">
+                  <AvatarImage src={user?.avatar} />
+                  <AvatarFallback className="bg-gradient-to-br from-lune-500 to-lune-800 text-white text-xs font-semibold">
+                    {displayName[0]?.toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="hidden md:block text-sm font-medium max-w-[120px] truncate">{displayName}</span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="w-60 bg-popover/95 backdrop-blur-2xl border-white/10 rounded-2xl p-1.5 text-white"
+            >
+              <DropdownMenuLabel className="px-2.5 py-2">
+                <p className="text-sm font-semibold truncate">{displayName}</p>
+                <p className="text-xs font-normal text-white/40 truncate">{user?.email}</p>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator className="bg-white/10" />
+              <DropdownMenuItem onClick={() => navigate('/profile')} className="rounded-xl gap-2.5 py-2 focus:bg-white/[0.06]">
+                <User size={16} /> Profile
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate('/settings')} className="rounded-xl gap-2.5 py-2 focus:bg-white/[0.06]">
+                <Settings size={16} /> Settings
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="bg-white/10" />
+              <DropdownMenuItem
+                onClick={disconnect}
+                className="rounded-xl gap-2.5 py-2 text-red-300 focus:text-red-200 focus:bg-red-500/10"
+              >
+                <LogOut size={16} /> Log out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : (
-          <Button
-            variant="outline"
+          <button
             onClick={() => setIsWalletOpen(true)}
-            className="bg-white/5 border-white/10 text-gray-400 rounded-xl h-10 px-4 text-xs"
+            className="flex items-center gap-2 h-10 px-3 md:px-4 rounded-full border border-white/10 bg-white/[0.03] text-white/60 hover:text-white hover:border-lune-400/40 text-xs font-semibold transition-all"
           >
-            <Wallet size={14} />
-            <span>Wallet unavailable</span>
-          </Button>
+            <Wallet size={15} />
+            <span className="hidden sm:inline">Wallet unavailable</span>
+          </button>
         )}
       </div>
 

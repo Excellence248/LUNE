@@ -1,9 +1,8 @@
 "use client";
 
 import React, { useState, useRef } from 'react';
-import { Image as ImageIcon, BarChart2, Smile, Zap, X } from 'lucide-react';
+import { Image as ImageIcon, X, Lock } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Button } from '@/components/ui/button';
 import { useSocial } from '@/context/SocialContext';
 import { useWallet } from '@/context/WalletContext';
 import { showSuccess, showError } from '@/utils/toast';
@@ -11,6 +10,7 @@ import { showSuccess, showError } from '@/utils/toast';
 const CreatePost = () => {
   const [content, setContent] = useState('');
   const [image, setImage] = useState<string | null>(null);
+  const [posting, setPosting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { addPost } = useSocial();
   const { user } = useWallet();
@@ -19,7 +19,7 @@ const CreatePost = () => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 5 * 1024 * 1024) {
-        showError("Image size must be less than 5MB");
+        showError('Image size must be less than 5MB');
         return;
       }
       const reader = new FileReader();
@@ -28,79 +28,89 @@ const CreatePost = () => {
       };
       reader.readAsDataURL(file);
     }
+    e.target.value = '';
   };
 
   const handlePost = async () => {
     if (!user || (!content.trim() && !image)) return;
+    setPosting(true);
     try {
       await addPost(content, image || undefined);
       setContent('');
       setImage(null);
-      showSuccess('Post saved to the database.');
+      showSuccess('Posted.');
     } catch {
       showError('Post could not be saved.');
+    } finally {
+      setPosting(false);
     }
   };
 
   if (!user) {
-    return <p className="p-4 md:p-6 border-b border-white/5 text-sm text-gray-500">Guest browsing is read-only. Posting requires an account session.</p>;
+    return (
+      <div className="px-4 md:px-6 py-5 flex items-center gap-3 text-sm text-white/45">
+        <div className="h-10 w-10 rounded-full border border-white/10 bg-white/[0.03] flex items-center justify-center">
+          <Lock size={16} className="text-lune-300/70" />
+        </div>
+        <p>You're browsing as a guest. Posting needs an account session.</p>
+      </div>
+    );
   }
 
+  const canPost = (content.trim().length > 0 || !!image) && !posting;
+
   return (
-    <div className="p-4 md:p-6 border-b border-white/5 bg-white/[0.01]">
-      <div className="flex gap-3 md:gap-4">
-        <Avatar className="w-10 h-10 md:w-12 md:h-12 border border-white/10 shrink-0">
+    <div className="px-4 md:px-6 pt-5 pb-3">
+      <div className="flex gap-3.5">
+        <Avatar className="w-11 h-11 ring-1 ring-white/10 shrink-0">
           <AvatarImage src={user?.avatar} />
-          <AvatarFallback className="bg-purple-900 text-purple-200 text-xs">
-            {user?.username?.[0] || 'U'}
+          <AvatarFallback className="bg-gradient-to-br from-lune-500 to-lune-800 text-white text-sm font-semibold">
+            {(user?.username || user?.email)?.[0]?.toUpperCase() || 'U'}
           </AvatarFallback>
         </Avatar>
-        
+
         <div className="flex-1 min-w-0">
           <textarea
             value={content}
-            onChange={(e) => setContent(e.target.value)}
+            onChange={e => setContent(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handlePost();
+            }}
             placeholder="What's the alpha today?"
-            className="w-full bg-transparent border-none text-base md:text-lg text-white placeholder:text-gray-600 focus:ring-0 resize-none min-h-[80px] md:min-h-[100px] p-0"
+            rows={2}
+            className="w-full bg-transparent border-none text-[17px] text-white placeholder:text-white/30 focus:outline-none focus:ring-0 resize-none min-h-[64px] pt-2 leading-relaxed"
           />
 
           {image && (
-            <div className="relative mt-2 mb-4 rounded-2xl overflow-hidden border border-white/10 max-w-md">
-              <img src={image} alt="Preview" className="w-full h-auto object-cover" />
-              <button 
+            <div className="relative mt-2 mb-3 rounded-2xl overflow-hidden border border-white/10 max-w-md">
+              <img src={image} alt="Attachment preview" className="w-full h-auto object-cover" />
+              <button
                 onClick={() => setImage(null)}
+                aria-label="Remove image"
                 className="absolute top-2 right-2 p-1.5 bg-black/60 backdrop-blur-md rounded-full text-white hover:bg-black/80 transition-colors"
               >
                 <X size={16} />
               </button>
             </div>
           )}
-          
-          <div className="flex items-center justify-between pt-3 border-t border-white/5 mt-2">
-            <div className="flex items-center gap-1 text-purple-400">
-              <input 
-                type="file" 
-                ref={fileInputRef} 
-                onChange={handleImageSelect} 
-                accept="image/*" 
-                className="hidden" 
-              />
-              <button 
+
+          <div className="flex items-center justify-between pt-2.5 border-t border-white/[0.06]">
+            <div className="flex items-center gap-1 text-lune-300">
+              <input type="file" ref={fileInputRef} onChange={handleImageSelect} accept="image/*" className="hidden" />
+              <button
                 onClick={() => fileInputRef.current?.click()}
-                className="p-2 hover:bg-purple-500/10 rounded-full transition-colors"
+                aria-label="Add image"
+                className="h-9 w-9 flex items-center justify-center hover:bg-lune-500/10 rounded-full transition-colors"
               >
                 <ImageIcon size={18} />
               </button>
             </div>
-            
-            <Button
-              onClick={handlePost}
-              disabled={!content.trim() && !image}
-              size="sm"
-              className="bg-purple-600 hover:bg-purple-500 text-white rounded-full px-5 font-bold disabled:opacity-50 shadow-[0_0_15px_rgba(147,51,234,0.3)] text-xs"
-            >
-              Post Alpha
-            </Button>
+
+            <div className="flex items-center gap-3">
+              <button onClick={handlePost} disabled={!canPost} className="lune-btn h-9 text-sm">
+                {posting ? 'Posting…' : 'Post'}
+              </button>
+            </div>
           </div>
         </div>
       </div>

@@ -1,18 +1,91 @@
 "use client";
 
 import React, { useState } from 'react';
-import { MessageSquare, Repeat2, Heart, Share2, MoreHorizontal, DollarSign, Send } from 'lucide-react';
+import { MessageCircle, Repeat2, Heart, Coins, SendHorizontal } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import TipModal from './TipModal';
 import { useSocial, Post } from '@/context/SocialContext';
 import { useWallet } from '@/context/WalletContext';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNowStrict } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 
 interface FeedCardProps {
   post: Post & { repostedBy?: string };
 }
+
+/** Highlight $TICKER cashtags and link them to the token page. */
+const renderContent = (text: string, onTicker: (t: string) => void) =>
+  text.split(/(\$[A-Za-z][A-Za-z0-9]{1,9}\b)/g).map((part, i) =>
+    /^\$[A-Za-z][A-Za-z0-9]{1,9}$/.test(part) ? (
+      <button
+        key={i}
+        onClick={e => {
+          e.stopPropagation();
+          onTicker(part.slice(1).toUpperCase());
+        }}
+        className="font-semibold text-lune-300 hover:text-lune-200 hover:underline underline-offset-2"
+      >
+        {part}
+      </button>
+    ) : (
+      <React.Fragment key={i}>{part}</React.Fragment>
+    )
+  );
+
+const shortAgo = (date: string) =>
+  formatDistanceToNowStrict(new Date(date))
+    .replace(/ seconds?/, 's')
+    .replace(/ minutes?/, 'm')
+    .replace(/ hours?/, 'h')
+    .replace(/ days?/, 'd')
+    .replace(/ months?/, 'mo')
+    .replace(/ years?/, 'y');
+
+const ActionButton = ({
+  icon: Icon,
+  count,
+  active,
+  tone,
+  label,
+  disabled,
+  onClick,
+  fill,
+}: {
+  icon: React.ElementType;
+  count?: number;
+  active?: boolean;
+  tone: 'lune' | 'up' | 'pink' | 'amber';
+  label: string;
+  disabled?: boolean;
+  onClick: () => void;
+  fill?: boolean;
+}) => {
+  const tones = {
+    lune: ['text-lune-300', 'group-hover/btn:text-lune-300', 'group-hover/btn:bg-lune-400/10', 'bg-lune-400/10'],
+    up: ['text-emerald-400', 'group-hover/btn:text-emerald-400', 'group-hover/btn:bg-emerald-400/10', 'bg-emerald-400/10'],
+    pink: ['text-pink-400', 'group-hover/btn:text-pink-400', 'group-hover/btn:bg-pink-400/10', 'bg-pink-400/10'],
+    amber: ['text-amber-300', 'group-hover/btn:text-amber-300', 'group-hover/btn:bg-amber-300/10', 'bg-amber-300/10'],
+  }[tone];
+  return (
+    <button
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      aria-pressed={active}
+      onClick={onClick}
+      className={cn(
+        'group/btn flex items-center gap-1 text-white/40 transition-colors disabled:opacity-40 disabled:pointer-events-none',
+        active ? tones[0] : tones[1]
+      )}
+    >
+      <span className={cn('h-8 w-8 rounded-full flex items-center justify-center transition-colors', active ? tones[3] : tones[2])}>
+        <Icon size={17} strokeWidth={1.9} className={cn(fill && active && 'fill-current')} />
+      </span>
+      {count !== undefined && <span className="text-xs font-medium tabular-nums min-w-[1ch]">{count > 0 ? count : ''}</span>}
+    </button>
+  );
+};
 
 const FeedCard = ({ post }: FeedCardProps) => {
   const navigate = useNavigate();
@@ -41,169 +114,162 @@ const FeedCard = ({ post }: FeedCardProps) => {
     }
   };
 
+  const goToTicker = (sym: string) => navigate(`/token/${encodeURIComponent(sym)}`);
+
   const isRepost = post.post_type === 'repost';
   const displayUsername = isRepost ? post.repost_username : post.profiles?.username;
+  const body = isRepost && post.repost_content ? post.repost_content : post.content;
 
   return (
-    <div className="p-4 md:p-6 border-b border-white/5 hover:bg-white/[0.02] transition-colors group">
-      {/* Repost Header */}
+    <article className="px-4 md:px-6 py-4 hover:bg-white/[0.015] transition-colors">
       {(post.repostedBy || (isRepost && post.profiles?.username)) && (
-        <div 
+        <button
           onClick={() => navigateToProfile(post.repostedBy || post.profiles?.username)}
-          className="flex items-center gap-2 mb-2 ml-8 text-[10px] font-bold text-gray-500 uppercase tracking-widest cursor-pointer hover:text-purple-400 transition-colors"
+          className="flex items-center gap-2 mb-2 ml-7 text-xs font-medium text-white/40 hover:text-lune-300 transition-colors"
         >
-          <Repeat2 size={12} />
-          <span>Reposted by {post.repostedBy || post.profiles?.username}</span>
-        </div>
+          <Repeat2 size={14} />
+          <span>{post.repostedBy || post.profiles?.username} reposted</span>
+        </button>
       )}
-      
-      <div className="flex gap-3 md:gap-4">
-        <Avatar 
-          onClick={() => navigateToProfile(displayUsername)}
-          className="w-10 h-10 md:w-12 md:h-12 border border-white/10 shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
-        >
-          <AvatarImage src={isRepost ? undefined : post.profiles?.avatar_url} />
-          <AvatarFallback className="bg-purple-900 text-purple-200 text-xs">
-            {displayUsername?.[0] || 'U'}
-          </AvatarFallback>
-        </Avatar>
-        
+
+      <div className="flex gap-3.5">
+        <button onClick={() => navigateToProfile(displayUsername)} className="shrink-0 h-fit" aria-label={`View ${displayUsername || 'user'}'s profile`}>
+          <Avatar className="w-11 h-11 ring-1 ring-white/10 hover:ring-lune-400/50 transition-all">
+            <AvatarImage src={isRepost ? undefined : post.profiles?.avatar_url} />
+            <AvatarFallback className="bg-gradient-to-br from-lune-600/70 to-lune-900 text-lune-100 text-sm font-semibold">
+              {displayUsername?.[0]?.toUpperCase() || 'U'}
+            </AvatarFallback>
+          </Avatar>
+        </button>
+
         <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between mb-0.5">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <span 
-                onClick={() => navigateToProfile(displayUsername)}
-                className="font-bold text-white hover:underline cursor-pointer text-sm md:text-base truncate"
+          <div className="flex items-center gap-1.5 min-w-0 text-[15px]">
+            <button
+              onClick={() => navigateToProfile(displayUsername)}
+              className="font-semibold text-white hover:underline truncate"
+            >
+              {displayUsername || 'Anonymous'}
+            </button>
+            {displayUsername && <span className="text-white/35 truncate hidden sm:inline">@{displayUsername}</span>}
+            <span className="text-white/25">·</span>
+            <time dateTime={post.created_at} title={new Date(post.created_at).toLocaleString()} className="text-white/35 text-sm shrink-0">
+              {shortAgo(post.created_at)}
+            </time>
+            {!isOwnPost && currentUser && !isRepost && (
+              <button
+                onClick={() => (following ? unfollowUser(post.user_id) : followUser(post.user_id))}
+                className={cn(
+                  'ml-auto shrink-0 text-xs font-semibold h-7 px-3 rounded-full border transition-all',
+                  following
+                    ? 'border-white/10 text-white/50 hover:text-red-300 hover:border-red-400/30'
+                    : 'border-lune-400/40 text-lune-200 bg-lune-500/10 hover:bg-lune-500/20'
+                )}
               >
-                {displayUsername || 'Anonymous'}
-              </span>
-              <span className="text-gray-600 text-xs shrink-0">
-                · {formatDistanceToNow(new Date(post.created_at))} ago
-              </span>
-              {!isOwnPost && currentUser && !isRepost && (
-                <button 
-                  onClick={() => following ? unfollowUser(post.user_id) : followUser(post.user_id)}
-                  className={cn(
-                    "ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full border transition-all",
-                    following 
-                      ? "border-white/10 text-gray-500 hover:text-red-400 hover:border-red-400/30" 
-                      : "border-purple-500/50 text-purple-400 hover:bg-purple-500/10"
-                  )}
-                >
-                  {following ? 'Following' : 'Follow'}
-                </button>
-              )}
-            </div>
+                {following ? 'Following' : 'Follow'}
+              </button>
+            )}
           </div>
 
-          <p className="text-gray-300 text-sm md:text-base leading-relaxed mb-3 whitespace-pre-wrap break-words">
-            {isRepost && post.repost_content ? post.repost_content : post.content}
+          <p className="selectable mt-1 text-[15px] text-white/85 leading-relaxed whitespace-pre-wrap break-words">
+            {renderContent(body, goToTicker)}
           </p>
 
           {post.image_url && (
-            <div className="mt-2 mb-4 rounded-2xl overflow-hidden border border-white/10 max-w-2xl">
-              <img src={post.image_url} alt="Post content" className="w-full h-auto object-cover" />
+            <div className="mt-3 rounded-2xl overflow-hidden border border-white/[0.08] max-w-xl">
+              <img src={post.image_url} alt="Post attachment" loading="lazy" className="w-full h-auto max-h-[520px] object-cover" />
             </div>
           )}
 
-          <div className="flex items-center justify-between max-w-md text-gray-500 -ml-2">
-            <button 
+          <div className="mt-2 -ml-2 flex items-center justify-between max-w-sm">
+            <ActionButton
+              icon={MessageCircle}
+              tone="lune"
+              label="Replies"
+              count={post.replies?.length || 0}
+              active={showComments}
               onClick={() => setShowComments(!showComments)}
-              className="flex items-center gap-1.5 hover:text-blue-400 transition-colors group/btn"
-            >
-              <MessageSquare size={16} />
-              <span className="text-xs">{post.replies?.length || 0}</span>
-            </button>
-            <button
+            />
+            <ActionButton
+              icon={Repeat2}
+              tone="up"
+              label={!currentUser ? 'Reposting requires an account session' : 'Repost'}
+              count={post.reposts?.length || 0}
+              active={isReposted}
               disabled={!currentUser}
-              title={!currentUser ? 'Reposting requires an account session' : 'Repost'}
               onClick={() => toggleRepost(post.id)}
-              className={cn(
-                "flex items-center gap-1.5 transition-colors group/btn disabled:opacity-50",
-                isReposted ? "text-green-400" : "hover:text-green-400"
-              )}
-            >
-              <div className={cn("p-2 rounded-full", isReposted ? "bg-green-400/10" : "group-hover/btn:bg-green-400/10")}>
-                <Repeat2 size={16} />
-              </div>
-              <span className="text-xs">{post.reposts?.length || 0}</span>
-            </button>
-            <button
+            />
+            <ActionButton
+              icon={Heart}
+              tone="pink"
+              label={!currentUser ? 'Liking requires an account session' : 'Like'}
+              count={post.likes?.length || 0}
+              active={isLiked}
+              fill
               disabled={!currentUser}
-              title={!currentUser ? 'Liking requires an account session' : 'Like'}
               onClick={() => toggleLike(post.id)}
-              className={cn(
-                "flex items-center gap-1.5 transition-colors group/btn disabled:opacity-50",
-                isLiked ? "text-pink-400" : "hover:text-pink-400"
-              )}
-            >
-              <div className={cn("p-2 rounded-full", isLiked ? "bg-pink-400/10" : "group-hover/btn:bg-pink-400/10")}>
-                <Heart size={16} className={cn(isLiked && "fill-pink-400")} />
-              </div>
-              <span className="text-xs">{post.likes?.length || 0}</span>
-            </button>
-            <button 
-              onClick={() => setIsTipOpen(true)}
-              className="flex items-center gap-1.5 hover:text-yellow-400 transition-colors group/btn"
-            >
-              <div className="p-2 rounded-full group-hover/btn:bg-yellow-400/10" title="Tipping unavailable">
-                <DollarSign size={16} />
-              </div>
-            </button>
+            />
+            <ActionButton icon={Coins} tone="amber" label="Tip (unavailable)" onClick={() => setIsTipOpen(true)} />
           </div>
 
           {showComments && (
-            <div className="mt-4 space-y-4 border-t border-white/5 pt-4">
-              {post.replies?.map((reply) => (
-                <div key={reply.id} className="flex gap-3">
-                  <Avatar 
-                    onClick={() => navigateToProfile(reply.profiles?.username)}
-                    className="w-8 h-8 border border-white/10 shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
-                  >
-                    <AvatarFallback className="bg-purple-900 text-[10px] text-purple-200">
-                      {reply.profiles?.username?.[0] || 'U'}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span 
-                        onClick={() => navigateToProfile(reply.profiles?.username)}
-                        className="font-bold text-white text-xs cursor-pointer hover:underline"
-                      >
-                        {reply.profiles?.username}
-                      </span>
-                      <span className="text-gray-500 text-[10px]">
-                        {formatDistanceToNow(new Date(reply.created_at))} ago
-                      </span>
+            <div className="mt-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3 space-y-3">
+              {post.replies?.length ? (
+                post.replies.map(reply => (
+                  <div key={reply.id} className="flex gap-2.5">
+                    <button onClick={() => navigateToProfile(reply.profiles?.username)} className="shrink-0 h-fit">
+                      <Avatar className="w-7 h-7 ring-1 ring-white/10">
+                        <AvatarImage src={reply.profiles?.avatar_url} />
+                        <AvatarFallback className="bg-lune-900 text-[10px] text-lune-200 font-semibold">
+                          {reply.profiles?.username?.[0]?.toUpperCase() || 'U'}
+                        </AvatarFallback>
+                      </Avatar>
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <button
+                          onClick={() => navigateToProfile(reply.profiles?.username)}
+                          className="font-semibold text-white hover:underline"
+                        >
+                          {reply.profiles?.username}
+                        </button>
+                        <span className="text-white/30">{shortAgo(reply.created_at)}</span>
+                      </div>
+                      <p className="selectable text-sm text-white/70 leading-relaxed break-words">{reply.content}</p>
                     </div>
-                    <p className="text-gray-400 text-xs leading-relaxed">{reply.content}</p>
                   </div>
-                </div>
-              ))}
-              
-              <form onSubmit={handleComment} className="flex gap-2 mt-4">
-                <input 
-                  type="text" 
-                  value={commentInput}
-                  onChange={(e) => setCommentInput(e.target.value)}
-                  placeholder="Post your reply" 
-                  className="flex-1 bg-white/5 border border-white/10 rounded-full px-4 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-purple-500/50"
-                />
-                <button type="submit" className="p-2 bg-purple-600 rounded-full hover:bg-purple-500 transition-colors">
-                  <Send size={14} />
-                </button>
-              </form>
+                ))
+              ) : (
+                <p className="text-xs text-white/35 px-1">No replies yet.</p>
+              )}
+
+              {currentUser ? (
+                <form onSubmit={handleComment} className="flex gap-2 pt-1">
+                  <input
+                    type="text"
+                    value={commentInput}
+                    onChange={e => setCommentInput(e.target.value)}
+                    placeholder="Post your reply"
+                    className="lune-input rounded-full px-4 py-2"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!commentInput.trim()}
+                    aria-label="Send reply"
+                    className="lune-btn h-9 w-9 px-0 shrink-0"
+                  >
+                    <SendHorizontal size={15} />
+                  </button>
+                </form>
+              ) : (
+                <p className="text-xs text-white/35 px-1">Replying requires an account session.</p>
+              )}
             </div>
           )}
         </div>
       </div>
 
-      <TipModal 
-        isOpen={isTipOpen} 
-        onClose={() => setIsTipOpen(false)} 
-        recipient={displayUsername || 'Anonymous'} 
-      />
-    </div>
+      <TipModal isOpen={isTipOpen} onClose={() => setIsTipOpen(false)} recipient={displayUsername || 'Anonymous'} />
+    </article>
   );
 };
 

@@ -2,21 +2,10 @@
 
 import React, { useState, useMemo } from 'react';
 import Layout from '@/components/lune/Layout';
-import { 
-  Search, 
-  BarChart3, 
-  ArrowUpRight, 
-  Filter, 
-  Loader2, 
-  Globe, 
-  Zap, 
-  TrendingUp, 
-  Star,
-  ArrowUpDown,
-  ChevronRight
-} from 'lucide-react';
+import { Search, ArrowUpRight, Globe, TrendingUp, ArrowUpDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { cn } from '@/lib/utils';
+import { cn, changeClass } from '@/lib/utils';
+import { PageHeader, EmptyState } from '@/components/lune/Brand';
 import { useTokenData, TokenInfo } from '@/hooks/useTokenData';
 import { useNavigate } from 'react-router-dom';
 
@@ -75,172 +64,153 @@ const Explorer = () => {
     setSortConfig({ key, direction });
   };
 
-  const trendingTokens = tokens.slice(0, 3);
+  const featured = tokens.slice(0, 3);
+  const th = 'px-5 py-4 text-[11px] font-semibold text-white/35 uppercase tracking-wider';
+  const SortBtn = ({ k, children }: { k: keyof TokenInfo; children: React.ReactNode }) => (
+    <button
+      onClick={() => handleSort(k)}
+      className={cn('flex items-center gap-1.5 uppercase tracking-wider hover:text-white transition-colors', sortConfig?.key === k && 'text-lune-300')}
+    >
+      {children} <ArrowUpDown size={12} />
+    </button>
+  );
 
   return (
     <Layout className="max-w-7xl">
-      {/* Header Section */}
-      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8 mb-12">
-        <div className="space-y-2">
-          <div className="flex items-center gap-3 text-purple-400 font-bold text-sm uppercase tracking-widest">
-            <TrendingUp size={16} />
-            API-backed market quotes
-          </div>
-          <h1 className="text-4xl md:text-5xl font-bold tracking-tight">
-            Market Explorer
-          </h1>
-          <p className="text-gray-500 text-lg max-w-2xl">
-            Selected major assets from CoinGecko and token search results from DexScreener. Requested every minute; this is not a trending or performance ranking.
-          </p>
-          {updatedAt && <p className="text-xs text-gray-500">Retrieved {new Date(updatedAt).toLocaleString()}</p>}
-          {error && <p className="text-sm text-amber-400" role="alert">{error}</p>}
-        </div>
-
-        <div className="flex flex-col sm:flex-row gap-4 w-full lg:w-auto">
-          <div className="relative flex-1 lg:w-80">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-            <input 
-              type="text" 
+      <PageHeader
+        eyebrow="Markets"
+        icon={TrendingUp}
+        title="Market Explorer"
+        description="Selected major assets from CoinGecko and token search results from DexScreener, refreshed every minute. This is not a trending or performance ranking."
+        actions={
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" size={16} />
+            <input
+              type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by name or symbol..." 
-              className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500/50 transition-all"
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search name or symbol…"
+              aria-label="Search tokens"
+              className="lune-input py-3 pl-11 pr-4"
             />
           </div>
+        }
+      />
+      {(updatedAt || error) && (
+        <div className="-mt-4 mb-8 flex flex-wrap items-center gap-3 text-xs">
+          {updatedAt && (
+            <span className="inline-flex items-center gap-2 text-white/40">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              Retrieved {new Date(updatedAt).toLocaleString()}
+            </span>
+          )}
+          {error && <span className="text-amber-300" role="alert">{error}</span>}
         </div>
-      </div>
+      )}
 
-      {/* Trending Section */}
-      {!loading && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-          {trendingTokens.map((token, i) => (
-            <motion.div
+      {/* Featured */}
+      {!loading && featured.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
+          {featured.map((token, i) => (
+            <motion.button
               key={token.address + i}
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.1 }}
+              transition={{ delay: i * 0.08 }}
               onClick={() => openToken(token)}
-              className="bg-gradient-to-br from-white/5 to-transparent border border-white/10 rounded-[2rem] p-6 hover:border-purple-500/30 transition-all cursor-pointer group relative overflow-hidden"
+              className="lune-card lune-card-hover text-left p-5 group relative overflow-hidden"
             >
-              <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                <TrendingUp size={80} />
-              </div>
-              <div className="flex items-center justify-between mb-6">
-                <div className="w-12 h-12 rounded-2xl bg-purple-600/20 flex items-center justify-center text-purple-400 font-bold">
-                  {token.symbol[0]}
+              <div aria-hidden className="absolute -top-12 -right-12 h-32 w-32 rounded-full bg-lune-500/15 blur-2xl group-hover:bg-lune-500/25 transition-colors" />
+              <div className="relative flex items-center justify-between mb-5">
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="shrink-0 h-11 w-11 rounded-2xl bg-lune-500/15 border border-lune-400/20 flex items-center justify-center font-mono text-xs font-bold text-lune-200">
+                    {token.symbol.slice(0, 3)}
+                  </span>
+                  <div className="min-w-0">
+                    <p title={token.name} className="font-display font-semibold truncate group-hover:text-lune-200 transition-colors">{token.name}</p>
+                    <p className="text-xs text-white/40 flex items-center gap-1.5 min-w-0">
+                      <span className="truncate max-w-[8rem]">{token.symbol}</span>
+                      <span className="text-white/20">•</span>
+                      <Globe size={11} className="shrink-0" />
+                      <span className="truncate">{token.chain}</span>
+                    </p>
+                  </div>
                 </div>
-                <div className="px-3 py-1 rounded-full bg-white/5 text-gray-400 text-[10px] font-bold border border-white/10">
-                  {token.category === 'Major' ? 'CoinGecko' : 'DexScreener'}
-                </div>
+                <ArrowUpRight size={18} className="shrink-0 text-white/30 group-hover:text-lune-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
               </div>
-              <h3 className="text-xl font-bold mb-1 group-hover:text-purple-400 transition-colors">{token.name}</h3>
-              <div className="flex items-center gap-2 text-gray-500 text-sm mb-4">
-                <span>{token.symbol}</span>
-                <span>•</span>
-                <span className="flex items-center gap-1"><Globe size={12} /> {token.chain}</span>
+              <div className="relative flex items-end justify-between">
+                <p className="text-2xl font-mono font-medium truncate">{token.price}</p>
+                <p className={cn('text-sm font-mono font-medium', changeClass(token.change))}>{token.change}</p>
               </div>
-              <div className="flex items-end justify-between">
-                <div>
-                  <p className="text-2xl font-mono font-bold">{token.price}</p>
-                  <p className="text-green-400 text-sm font-bold">{token.change}</p>
-                </div>
-                <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-purple-600 group-hover:text-white transition-all">
-                  <ArrowUpRight size={20} />
-                </div>
-              </div>
-            </motion.div>
+              <p className="relative mt-3 text-[10px] uppercase tracking-wider text-white/25">
+                via {token.category === 'Major' ? 'CoinGecko' : 'DexScreener'}
+              </p>
+            </motion.button>
           ))}
         </div>
       )}
 
-      {/* Filters Bar */}
-      <div className="flex flex-col md:flex-row items-center justify-between gap-6 mb-8">
-        <div className="flex gap-2 p-1 bg-white/5 rounded-2xl w-full md:w-auto overflow-x-auto no-scrollbar">
-          {(['All', 'Major', 'DEX'] as const).map((tab) => (
+      {/* Filters */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
+        <div className="flex gap-1 p-1 rounded-full border border-white/[0.07] bg-white/[0.02] w-fit">
+          {(['All', 'Major', 'DEX'] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={cn(
-                "px-6 py-2.5 rounded-xl text-sm font-bold transition-all whitespace-nowrap",
-                activeTab === tab 
-                  ? "bg-white text-black shadow-xl" 
-                  : "text-gray-500 hover:text-white"
+                'px-5 h-9 rounded-full text-sm font-semibold transition-all',
+                activeTab === tab ? 'bg-white text-black' : 'text-white/50 hover:text-white'
               )}
             >
-              {tab}s
+              {tab === 'All' ? 'All' : tab === 'Major' ? 'Majors' : 'DEX'}
             </button>
           ))}
         </div>
 
-        <div className="flex items-center gap-4 w-full md:w-auto overflow-x-auto no-scrollbar pb-2 md:pb-0">
-          <span className="text-xs font-bold text-gray-600 uppercase tracking-widest whitespace-nowrap">Filter by Chain:</span>
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
           {chains.map(chain => (
             <button
               key={chain}
               onClick={() => setSelectedChain(chain)}
               className={cn(
-                "px-4 py-2 rounded-xl text-xs font-bold border transition-all whitespace-nowrap",
-                selectedChain === chain 
-                  ? "bg-purple-500/10 border-purple-500/50 text-purple-400" 
-                  : "bg-transparent border-white/10 text-gray-500 hover:border-white/20"
+                'px-3.5 h-8 rounded-full text-xs font-semibold border transition-all whitespace-nowrap',
+                selectedChain === chain
+                  ? 'bg-lune-500/15 border-lune-400/40 text-lune-200'
+                  : 'border-white/[0.08] text-white/45 hover:text-white hover:border-white/20'
               )}
             >
-              {chain}
+              {chain === 'All' ? 'All chains' : chain}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Main Table */}
+      {/* Table */}
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-32 gap-6">
-          <div className="relative">
-            <Loader2 className="w-16 h-16 text-purple-500 animate-spin" />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Zap size={24} className="text-purple-400" />
+        <div className="lune-card divide-y divide-white/[0.05]" role="status" aria-label="Loading market data">
+          {[0, 1, 2, 3, 4, 5].map(i => (
+            <div key={i} className="h-[68px] px-5 flex items-center gap-4 animate-pulse">
+              <div className="h-10 w-10 rounded-xl bg-white/[0.05]" />
+              <div className="h-3 w-40 rounded-full bg-white/[0.05]" />
             </div>
-          </div>
-          <div className="text-center">
-            <p className="text-xl font-bold text-white mb-2">Loading Market Data</p>
-            <p className="text-gray-500">Requesting quotes from CoinGecko and DexScreener…</p>
-          </div>
+          ))}
         </div>
       ) : (
-        <div className="bg-white/5 border border-white/10 rounded-[2.5rem] overflow-hidden backdrop-blur-sm">
+        <div className="lune-card overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left min-w-[1000px]">
+            <table className="w-full text-left min-w-[860px]">
               <thead>
-                <tr className="border-b border-white/5 bg-white/[0.02]">
-                  <th className="px-8 py-6 text-xs font-bold text-gray-500 uppercase tracking-wider">
-                    <button onClick={() => handleSort('name')} className="flex items-center gap-2 hover:text-white transition-colors">
-                      Token <ArrowUpDown size={14} />
-                    </button>
-                  </th>
-                  <th className="px-8 py-6 text-xs font-bold text-gray-500 uppercase tracking-wider">Chain</th>
-                  <th className="px-8 py-6 text-xs font-bold text-gray-500 uppercase tracking-wider">
-                    <button onClick={() => handleSort('price')} className="flex items-center gap-2 hover:text-white transition-colors">
-                      Price <ArrowUpDown size={14} />
-                    </button>
-                  </th>
-                  <th className="px-8 py-6 text-xs font-bold text-gray-500 uppercase tracking-wider">
-                    <button onClick={() => handleSort('change')} className="flex items-center gap-2 hover:text-white transition-colors">
-                      24h Change <ArrowUpDown size={14} />
-                    </button>
-                  </th>
-                  <th className="px-8 py-6 text-xs font-bold text-gray-500 uppercase tracking-wider">
-                    <button onClick={() => handleSort('volume')} className="flex items-center gap-2 hover:text-white transition-colors">
-                      Volume <ArrowUpDown size={14} />
-                    </button>
-                  </th>
-                  <th className="px-8 py-6 text-xs font-bold text-gray-500 uppercase tracking-wider">
-                    <button onClick={() => handleSort('mcap')} className="flex items-center gap-2 hover:text-white transition-colors">
-                      Market Cap <ArrowUpDown size={14} />
-                    </button>
-                  </th>
-                  <th className="px-8 py-6 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Action</th>
+                <tr className="border-b border-white/[0.06]">
+                  <th className={th}><SortBtn k="name">Token</SortBtn></th>
+                  <th className={th}>Chain</th>
+                  <th className={th}><SortBtn k="price">Price</SortBtn></th>
+                  <th className={th}><SortBtn k="change">24h</SortBtn></th>
+                  <th className={th}><SortBtn k="volume">Volume</SortBtn></th>
+                  <th className={th}><SortBtn k="mcap">Market cap</SortBtn></th>
+                  <th className={cn(th, 'w-12')} aria-label="Open" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5">
+              <tbody className="divide-y divide-white/[0.05]">
                 <AnimatePresence mode="popLayout">
                   {filteredAndSortedTokens.map((token, i) => (
                     <motion.tr
@@ -250,47 +220,49 @@ const Explorer = () => {
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
                       onClick={() => openToken(token)}
-                      className="hover:bg-white/[0.03] transition-all cursor-pointer group"
+                      className="hover:bg-white/[0.025] transition-colors cursor-pointer group"
                     >
-                      <td className="px-8 py-6">
-                        <div className="flex items-center gap-4">
-                          <div className={cn(
-                            "w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs shadow-lg",
-                            token.category === 'Major' ? "bg-blue-500/20 text-blue-400" : "bg-purple-500/20 text-purple-400"
-                          )}>
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={cn(
+                              'h-10 w-10 rounded-xl flex items-center justify-center font-mono font-bold text-[10px] border',
+                              token.category === 'Major'
+                                ? 'bg-sky-400/10 border-sky-400/15 text-sky-300'
+                                : 'bg-lune-500/10 border-lune-400/15 text-lune-200'
+                            )}
+                          >
                             {token.symbol.substring(0, 3)}
+                          </span>
+                          <div className="min-w-0 max-w-[260px]">
+                            <p title={token.name} className="font-semibold text-sm truncate group-hover:text-lune-200 transition-colors">{token.name}</p>
+                            <p className="text-xs text-white/35 font-mono truncate">{token.symbol}</p>
                           </div>
-                          <div>
-                            <p className="font-bold text-white group-hover:text-purple-400 transition-colors">{token.name}</p>
-                            <p className="text-xs text-gray-500 font-mono">{token.symbol}</p>
-                          </div>
                         </div>
                       </td>
-                      <td className="px-8 py-6">
-                        <div className="flex items-center gap-2">
-                          <div className={cn(
-                            "w-2 h-2 rounded-full",
-                            token.chain === 'Solana' ? "bg-green-400" : 
-                            token.chain === 'Ethereum' ? "bg-blue-400" : "bg-purple-400"
-                          )} />
-                          <span className="text-xs font-medium text-gray-400">{token.chain}</span>
-                        </div>
+                      <td className="px-5 py-3.5">
+                        <span className="inline-flex items-center gap-1.5 text-xs text-white/50">
+                          <span
+                            className={cn(
+                              'h-1.5 w-1.5 rounded-full',
+                              token.chain === 'Solana' ? 'bg-emerald-400' : token.chain === 'Ethereum' ? 'bg-sky-400' : 'bg-lune-400'
+                            )}
+                          />
+                          {token.chain}
+                        </span>
                       </td>
-                      <td className="px-8 py-6 font-mono font-bold text-sm">{token.price}</td>
-                      <td className="px-8 py-6">
-                        <div className={cn(
-                          "inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold",
-                          token.change.startsWith('+') ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"
-                        )}>
-                          {token.change}
-                        </div>
+                      <td className="px-5 py-3.5 font-mono text-sm">{token.price}</td>
+                      <td className="px-5 py-3.5">
+                        <span className={cn('font-mono text-sm', changeClass(token.change))}>{token.change}</span>
                       </td>
-                      <td className="px-8 py-6 text-gray-400 text-sm font-mono">{token.volume}</td>
-                      <td className="px-8 py-6 text-gray-400 text-sm font-mono">{token.mcap}</td>
-                      <td className="px-8 py-6 text-right">
-                        <button aria-label={`View ${token.name} market data`} className="p-2.5 bg-purple-600 text-white rounded-xl hover:bg-purple-500 transition-all">
-                          <ArrowUpRight size={16} />
-                        </button>
+                      <td className="px-5 py-3.5 text-white/50 text-sm font-mono">{token.volume}</td>
+                      <td className="px-5 py-3.5 text-white/50 text-sm font-mono">{token.mcap}</td>
+                      <td className="px-5 py-3.5 text-right">
+                        <ArrowUpRight
+                          size={16}
+                          aria-label={`View ${token.name} market data`}
+                          className="inline text-white/25 group-hover:text-lune-300 transition-colors"
+                        />
                       </td>
                     </motion.tr>
                   ))}
@@ -298,20 +270,20 @@ const Explorer = () => {
               </tbody>
             </table>
           </div>
-          
-          {filteredAndSortedTokens.length === 0 && !loading && (
-            <div className="py-20 text-center">
-              <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Search size={24} className="text-gray-600" />
-              </div>
-              <p className="text-gray-500 font-medium">No tokens found matching your criteria.</p>
-              <button 
-                onClick={() => { setActiveTab('All'); setSelectedChain('All'); setSearchQuery(''); }}
-                className="mt-4 text-purple-400 font-bold hover:underline"
+
+          {filteredAndSortedTokens.length === 0 && (
+            <EmptyState icon={Search} title="No tokens match">
+              <button
+                onClick={() => {
+                  setActiveTab('All');
+                  setSelectedChain('All');
+                  setSearchQuery('');
+                }}
+                className="text-lune-300 font-semibold hover:underline"
               >
                 Clear all filters
               </button>
-            </div>
+            </EmptyState>
           )}
         </div>
       )}

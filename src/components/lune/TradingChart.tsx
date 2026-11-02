@@ -20,27 +20,33 @@ const TradingChart = ({ data, symbol }: TradingChartProps) => {
     const chart = LightweightCharts.createChart(chartContainerRef.current, {
       layout: {
         background: { type: LightweightCharts.ColorType.Solid, color: 'transparent' },
-        textColor: '#6b7280',
+        textColor: 'rgba(255,255,255,0.4)',
+        fontFamily: "'JetBrains Mono', ui-monospace, monospace",
       },
       grid: {
-        vertLines: { color: 'rgba(255, 255, 255, 0.05)' },
-        horzLines: { color: 'rgba(255, 255, 255, 0.05)' },
+        vertLines: { color: 'rgba(196, 160, 255, 0.04)' },
+        horzLines: { color: 'rgba(196, 160, 255, 0.05)' },
+      },
+      crosshair: {
+        vertLine: { color: 'rgba(169, 116, 255, 0.4)', labelBackgroundColor: '#7c2fe0' },
+        horzLine: { color: 'rgba(169, 116, 255, 0.4)', labelBackgroundColor: '#7c2fe0' },
       },
       width: chartContainerRef.current.clientWidth,
       height: 400,
+      rightPriceScale: { borderColor: 'rgba(255, 255, 255, 0.06)' },
       timeScale: {
-        borderColor: 'rgba(255, 255, 255, 0.1)',
+        borderColor: 'rgba(255, 255, 255, 0.06)',
         timeVisible: true,
         secondsVisible: false,
       },
     });
 
     const seriesOptions = {
-      upColor: '#22c55e',
-      downColor: '#ef4444',
+      upColor: '#34d399',
+      downColor: '#f4566a',
       borderVisible: false,
-      wickUpColor: '#22c55e',
-      wickDownColor: '#ef4444',
+      wickUpColor: '#34d399',
+      wickDownColor: '#f4566a',
     };
 
     // Use the more robust addSeries method with the CandlestickSeries type
@@ -89,12 +95,12 @@ const TradingChart = ({ data, symbol }: TradingChartProps) => {
   }, [data]);
 
   return (
-    <div className="relative w-full h-[400px] bg-[#050505]">
+    <div className="relative w-full h-[400px]">
       <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
-        <div className="px-3 py-1 bg-purple-600/20 border border-purple-500/30 rounded-lg text-xs font-bold text-purple-400">
+        <div className="px-3 py-1 bg-lune-500/15 border border-lune-400/25 rounded-full text-xs font-mono font-semibold text-lune-200">
           {symbol}
         </div>
-        <div className="px-3 py-1 bg-white/5 border border-white/10 rounded-lg text-[10px] font-bold text-gray-500">
+        <div className="px-3 py-1 bg-white/[0.04] border border-white/10 rounded-full text-[10px] font-mono text-white/50">
           1h
         </div>
       </div>

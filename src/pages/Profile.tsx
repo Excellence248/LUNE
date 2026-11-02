@@ -3,11 +3,12 @@
 import React, { useState, useRef } from 'react';
 import Layout from '@/components/lune/Layout';
 import FeedCard from '@/components/lune/FeedCard';
-import { Shield, Edit3, Camera } from 'lucide-react';
+import { Edit3, Camera, UserRound } from 'lucide-react';
+import ProfileHero from '@/components/lune/ProfileHero';
+import { EmptyState } from '@/components/lune/Brand';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useWallet } from '@/context/WalletContext';
 import { useSocial } from '@/context/SocialContext';
-import { Button } from '@/components/ui/button';
 import { showSuccess, showError } from '@/utils/toast';
 import {
   Dialog,
@@ -16,7 +17,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 const Profile = () => {
@@ -65,121 +65,111 @@ const Profile = () => {
   if (!user) {
     return (
       <Layout>
-        <h1 className="text-3xl font-bold mb-4">Profile unavailable</h1>
-        <p className="text-gray-400">You are browsing as a guest. No personal profile or account statistics are available.</p>
+        <div className="lune-card max-w-lg mx-auto mt-10">
+          <EmptyState icon={UserRound} title="Profile unavailable">
+            You're browsing as a guest. No personal profile or account statistics are available.
+          </EmptyState>
+        </div>
       </Layout>
     );
   }
 
+  const displayName = user.username || user.email?.split('@')[0] || 'Account profile';
+
   return (
     <Layout noPadding>
-      <div className="relative h-48 md:h-64 bg-gradient-to-r from-purple-900 to-blue-900 overflow-hidden">
-        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1639762681485-074b7f938ba0?q=80&w=2832&auto=format&fit=crop')] bg-cover bg-center opacity-30 mix-blend-overlay" />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#050505] to-transparent" />
-      </div>
-
-      <div className="px-4 md:px-8 -mt-16 md:-mt-20 relative z-10 max-w-4xl">
-        <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
-          <Avatar className="w-32 h-32 md:w-40 md:h-40 border-8 border-[#050505] rounded-[2.5rem] shadow-2xl">
-            <AvatarImage src={user?.avatar} />
-            <AvatarFallback className="bg-purple-600 text-4xl font-bold">
-              {user?.username?.[0] || user?.email?.[0] || 'U'}
-            </AvatarFallback>
-          </Avatar>
-          
-          <div className="flex gap-3 pb-4">
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button className="bg-white text-black px-8 py-3 rounded-2xl font-bold hover:bg-gray-200 flex items-center gap-2">
-                  <Edit3 size={18} /> Edit Profile
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="bg-[#050505] border-white/10 text-white rounded-[2.5rem]">
-                <DialogHeader>
-                  <DialogTitle>Edit Profile</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-6 py-4">
-                  <div className="flex flex-col items-center gap-4">
-                    <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
-                      <Avatar className="w-24 h-24 border-4 border-white/10">
-                        <AvatarImage src={editData.avatar} />
-                        <AvatarFallback className="bg-purple-900 text-2xl">{editData.username?.[0]}</AvatarFallback>
-                      </Avatar>
-                      <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Camera size={24} />
-                      </div>
-                      <input 
-                        type="file" 
-                        ref={fileInputRef} 
-                        onChange={handleImageSelect} 
-                        accept="image/*" 
-                        className="hidden" 
-                      />
-                    </div>
-                    <p className="text-[10px] text-gray-500 uppercase font-bold">Click to change avatar</p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Username</Label>
-                    <Input 
-                      value={editData.username} 
-                      onChange={e => setEditData({...editData, username: e.target.value})}
-                      className="bg-white/5 border-white/10"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Bio</Label>
-                    <textarea 
-                      value={editData.bio} 
-                      onChange={e => setEditData({...editData, bio: e.target.value})}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl p-3 h-24 focus:outline-none text-white"
-                    />
-                  </div>
-                  <Button 
-                    onClick={handleSave} 
-                    disabled={loading}
-                    className="w-full bg-purple-600 hover:bg-purple-500"
+      <ProfileHero
+        name={displayName}
+        handle={user.username}
+        subtitle={user.email}
+        avatarUrl={user.avatar}
+        bio={user.bio ?? ''}
+        footnote="Reputation and follower totals are unavailable."
+        actions={
+          <Dialog
+            onOpenChange={open => {
+              if (open) setEditData({ username: user.username || '', bio: user.bio || '', avatar: user.avatar || '' });
+            }}
+          >
+            <DialogTrigger asChild>
+              <button className="h-10 px-5 rounded-full border border-white/15 bg-white/[0.03] text-sm font-semibold hover:bg-white/[0.08] transition-colors flex items-center gap-2">
+                <Edit3 size={15} /> Edit profile
+              </button>
+            </DialogTrigger>
+            <DialogContent className="bg-popover/95 backdrop-blur-2xl border-white/10 text-white rounded-3xl max-w-md">
+              <DialogHeader>
+                <DialogTitle className="font-display text-xl">Edit profile</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-5 pt-2">
+                <div className="flex flex-col items-center gap-3">
+                  <button
+                    type="button"
+                    className="relative group rounded-full"
+                    onClick={() => fileInputRef.current?.click()}
+                    aria-label="Change avatar"
                   >
-                    {loading ? "Saving..." : "Save Changes"}
-                  </Button>
+                    <Avatar className="w-24 h-24 ring-2 ring-lune-400/40">
+                      <AvatarImage src={editData.avatar} className="object-cover" />
+                      <AvatarFallback className="bg-gradient-to-br from-lune-400 to-lune-800 text-2xl font-bold">
+                        {editData.username?.[0]?.toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Camera size={22} />
+                    </span>
+                  </button>
+                  <input type="file" ref={fileInputRef} onChange={handleImageSelect} accept="image/*" className="hidden" />
+                  <p className="text-xs text-white/40">Tap to change avatar · max 2MB</p>
                 </div>
-              </DialogContent>
-            </Dialog>
-          </div>
-        </div>
 
-        <div className="space-y-6">
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-              <h1 className="text-3xl md:text-4xl font-bold tracking-tight">{user?.username || 'Account profile'}</h1>
-            </div>
-            <p className="text-gray-500 font-mono text-sm">{user?.email}</p>
-          </div>
-
-          <p className="text-gray-300 text-lg leading-relaxed max-w-2xl">
-            {user?.bio || "No bio set yet."}
-          </p>
-
-          <p className="text-sm text-gray-500">Reputation and follower totals are unavailable. Posts below are returned by the app database.</p>
-
-          <div className="pt-8">
-            <h3 className="text-xl font-bold mb-6">Your Alpha</h3>
-            <div className="divide-y divide-white/5">
-              {userPosts.length > 0 ? (
-                userPosts.map((post) => (
-                  <FeedCard 
-                    key={post.id} 
-                    post={{
-                      ...post,
-                      repostedBy: post.user_id !== user?.id ? user?.username : undefined
-                    }} 
+                <div className="space-y-2">
+                  <Label htmlFor="edit-username" className="text-white/60 text-xs">Username</Label>
+                  <input
+                    id="edit-username"
+                    value={editData.username}
+                    onChange={e => setEditData({ ...editData, username: e.target.value })}
+                    className="lune-input px-4 py-3"
                   />
-                ))
-              ) : (
-                <p className="text-gray-500 py-8 text-center">No posts yet. Share some alpha!</p>
-              )}
-            </div>
-          </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-bio" className="text-white/60 text-xs">Bio</Label>
+                  <textarea
+                    id="edit-bio"
+                    value={editData.bio}
+                    onChange={e => setEditData({ ...editData, bio: e.target.value })}
+                    className="lune-input px-4 py-3 h-28 resize-none"
+                  />
+                </div>
+                <button onClick={handleSave} disabled={loading} className="lune-btn w-full h-11">
+                  {loading ? 'Saving…' : 'Save changes'}
+                </button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        }
+      />
+
+      <div className="max-w-4xl px-4 md:px-10 mt-8">
+        <div className="border-b border-white/[0.06] flex">
+          <span className="relative px-1 pb-3 text-sm font-semibold">
+            Your posts
+            <span className="absolute inset-x-0 -bottom-px h-[3px] rounded-full bg-lune-400" />
+          </span>
+        </div>
+        <div className="divide-y divide-white/[0.06] -mx-4 md:-mx-6">
+          {userPosts.length > 0 ? (
+            userPosts.map(post => (
+              <FeedCard
+                key={post.id}
+                post={{
+                  ...post,
+                  repostedBy: post.user_id !== user?.id ? user?.username : undefined,
+                }}
+              />
+            ))
+          ) : (
+            <EmptyState title="No posts yet">Share your first bit of alpha from the feed.</EmptyState>
+          )}
         </div>
       </div>
     </Layout>

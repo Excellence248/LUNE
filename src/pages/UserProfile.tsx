@@ -4,9 +4,9 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '@/components/lune/Layout';
 import FeedCard from '@/components/lune/FeedCard';
-import { Shield, MessageSquare, UserPlus, UserMinus, Loader2 } from 'lucide-react';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Button } from '@/components/ui/button';
+import { MessageSquare, UserPlus, UserMinus, Loader2, UserX } from 'lucide-react';
+import ProfileHero from '@/components/lune/ProfileHero';
+import { EmptyState } from '@/components/lune/Brand';
 import { supabase } from '@/lib/supabase';
 import { useSocial, Post } from '@/context/SocialContext';
 import { useWallet } from '@/context/WalletContext';
@@ -61,7 +61,7 @@ const UserProfile = () => {
     return (
       <Layout>
         <div className="flex items-center justify-center min-h-[60vh]">
-          <Loader2 className="animate-spin text-purple-500" size={40} />
+          <Loader2 className="animate-spin text-lune-400" size={36} />
         </div>
       </Layout>
     );
@@ -70,10 +70,13 @@ const UserProfile = () => {
   if (!profile) {
     return (
       <Layout>
-        <div className="text-center py-20">
-          <h2 className="text-2xl font-bold">Profile unavailable</h2>
-          <p className="text-gray-400 mt-2">No profile was returned, or the database request could not be completed.</p>
-          <Button onClick={() => navigate('/')} className="mt-4">Back to Feed</Button>
+        <div className="lune-card max-w-lg mx-auto mt-10">
+          <EmptyState icon={UserX} title="Profile unavailable">
+            No profile was returned, or the database request could not be completed.
+          </EmptyState>
+          <div className="pb-10 flex justify-center">
+            <button onClick={() => navigate('/')} className="lune-btn h-10">Back to feed</button>
+          </div>
         </div>
       </Layout>
     );
@@ -84,62 +87,67 @@ const UserProfile = () => {
 
   return (
     <Layout noPadding>
-      <div className="relative h-48 md:h-64 bg-gradient-to-r from-purple-900 to-blue-900 overflow-hidden">
-        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1639762681485-074b7f938ba0?q=80&w=2832&auto=format&fit=crop')] bg-cover bg-center opacity-30 mix-blend-overlay" />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#050505] to-transparent" />
-      </div>
-
-      <div className="px-4 md:px-8 -mt-16 md:-mt-20 relative z-10 max-w-4xl">
-        <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
-          <Avatar className="w-32 h-32 md:w-40 md:h-40 border-8 border-[#050505] rounded-[2.5rem] shadow-2xl">
-            <AvatarImage src={profile.avatar_url} />
-            <AvatarFallback className="bg-purple-600 text-4xl font-bold">{profile.username?.[0]}</AvatarFallback>
-          </Avatar>
-          
-          <div className="flex gap-3 pb-4">
-            {!isMe && (
-              <>
-                <Button
-                  disabled
-                  className="bg-white/10 text-white border border-white/10 px-6 py-3 rounded-2xl font-bold flex items-center gap-2"
+      <ProfileHero
+        name={profile.username}
+        handle={profile.username}
+        avatarUrl={profile.avatar_url}
+        bio={profile.bio ?? ''}
+        actions={
+          isMe ? (
+            <button
+              onClick={() => navigate('/profile')}
+              className="h-10 px-5 rounded-full border border-white/15 text-sm font-semibold hover:bg-white/[0.06] transition-colors"
+            >
+              Edit profile
+            </button>
+          ) : (
+            <>
+              <button
+                disabled
+                title="Messaging unavailable"
+                aria-label="Messaging unavailable"
+                className="h-10 w-10 rounded-full border border-white/10 text-white/30 flex items-center justify-center cursor-not-allowed"
+              >
+                <MessageSquare size={17} />
+              </button>
+              {following ? (
+                <button
+                  disabled={!currentUser}
+                  onClick={() => unfollowUser(profile.id)}
+                  className="group h-10 px-5 rounded-full border border-white/15 text-sm font-semibold hover:border-red-400/40 hover:text-red-300 transition-colors flex items-center gap-2"
                 >
-                  <MessageSquare size={18} /> Messaging unavailable
-                </Button>
-                <Button
+                  <UserMinus size={16} className="hidden group-hover:block" />
+                  <span className="group-hover:hidden">Following</span>
+                  <span className="hidden group-hover:inline">Unfollow</span>
+                </button>
+              ) : (
+                <button
                   disabled={!currentUser}
                   title={!currentUser ? 'Following requires an account session' : undefined}
-                  onClick={() => following ? unfollowUser(profile.id) : followUser(profile.id)}
-                  className={following ? "bg-white/5 text-gray-400 border border-white/10" : "bg-purple-600 text-white"}
+                  onClick={() => followUser(profile.id)}
+                  className="lune-btn h-10"
                 >
-                  {following ? <><UserMinus size={18} className="mr-2" /> Unfollow</> : <><UserPlus size={18} className="mr-2" /> Follow</>}
-                </Button>
-              </>
-            )}
-          </div>
-        </div>
-
-        <div className="space-y-6">
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-              <h1 className="text-3xl md:text-4xl font-bold tracking-tight">{profile.username}</h1>
-            </div>
-            <p className="text-gray-500 font-mono text-sm">@{profile.username}</p>
-          </div>
-
-          <p className="text-gray-300 text-lg leading-relaxed max-w-2xl">
-            {profile.bio}
-          </p>
-
-          <div className="pt-8">
-            <h3 className="text-xl font-bold mb-6">Alpha Posts</h3>
-            <div className="divide-y divide-white/5">
-              {userPosts.length > 0 ? (
-                userPosts.map((post) => <FeedCard key={post.id} post={post} />)
-              ) : (
-                <p className="text-gray-500 py-8 text-center">No posts yet.</p>
+                  <UserPlus size={16} /> Follow
+                </button>
               )}
-            </div>
-          </div>
+            </>
+          )
+        }
+      />
+
+      <div className="max-w-4xl px-4 md:px-10 mt-8">
+        <div className="border-b border-white/[0.06] flex">
+          <span className="relative px-1 pb-3 text-sm font-semibold">
+            Posts
+            <span className="absolute inset-x-0 -bottom-px h-[3px] rounded-full bg-lune-400" />
+          </span>
+        </div>
+        <div className="divide-y divide-white/[0.06] -mx-4 md:-mx-6">
+          {userPosts.length > 0 ? (
+            userPosts.map(post => <FeedCard key={post.id} post={post} />)
+          ) : (
+            <EmptyState title="No posts yet">@{profile.username} hasn't posted anything.</EmptyState>
+          )}
         </div>
       </div>
     </Layout>

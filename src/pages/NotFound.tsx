@@ -1,5 +1,5 @@
-import { useLocation } from "react-router-dom";
-import { useEffect } from "react";
+import { Link, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 
 const NotFound = () => {
   const location = useLocation();
@@ -7,21 +7,30 @@ const NotFound = () => {
   useEffect(() => {
     // Sanitize the pathname to prevent log injection attacks
     const sanitizedPath = location.pathname.replace(/[<>]/g, '').substring(0, 255);
-    
-    console.error(
-      "404 Error: User attempted to access non-existent route:",
-      sanitizedPath,
-    );
+
+    console.error('404 Error: User attempted to access non-existent route:', sanitizedPath);
   }, [location.pathname]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#050505] text-white">
-      <div className="text-center p-8 bg-white/5 border border-white/10 rounded-[2.5rem] max-w-md">
-        <h1 className="text-6xl font-bold mb-4 text-purple-500">404</h1>
-        <p className="text-xl text-gray-400 mb-8">Oops! This page has drifted into deep space.</p>
-        <a href="/" className="inline-block bg-purple-600 hover:bg-purple-500 text-white px-8 py-3 rounded-xl font-bold transition-all">
-          Return to Home
-        </a>
+    <div className="relative min-h-screen flex items-center justify-center lune-backdrop text-white px-6 overflow-hidden">
+      <div aria-hidden className="absolute inset-0 lune-stars opacity-70" />
+      <div className="relative text-center max-w-md">
+        <div className="relative mx-auto mb-6 h-44 w-44 animate-float">
+          <div aria-hidden className="absolute inset-6 rounded-full bg-lune-500/40 blur-2xl" />
+          <img
+            src="/lune-mascot.jpg"
+            alt="Lune mascot"
+            className="relative h-full w-full object-cover scale-[1.6]"
+            style={{ clipPath: 'circle(30%)' }}
+            draggable={false}
+          />
+        </div>
+        <p className="font-mono text-sm text-lune-300 mb-2">404</p>
+        <h1 className="text-3xl md:text-4xl font-bold mb-3">Lost in orbit</h1>
+        <p className="text-white/50 mb-8">This page has drifted into deep space.</p>
+        <Link to="/" className="lune-btn h-11 px-7">
+          Return home
+        </Link>
       </div>
     </div>
   );
