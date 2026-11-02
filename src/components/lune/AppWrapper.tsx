@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WalletProvider } from "@/context/WalletContext";
 import { SessionContextProvider } from "@/context/SessionContext";
 import { SocialProvider } from "@/context/SocialContext";
+import CosmicFX from "./CosmicFX";
 
 const queryClient = new QueryClient();
 
@@ -18,6 +19,7 @@ export const AppWrapper = ({ children }: { children: React.ReactNode }) => {
         <WalletProvider>
           <SocialProvider>
             <TooltipProvider>
+              <CosmicFX />
               {children}
               <Toaster />
               <Sonner />
