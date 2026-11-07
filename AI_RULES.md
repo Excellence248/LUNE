@@ -1,22 +1,19 @@
 # Tech Stack
 
-- You are building a React application.
-- Use TypeScript.
-- Use React Router. KEEP the routes in src/App.tsx
-- Always put source code in the src folder.
-- Put pages into src/pages/
-- Put components into src/components/
-- The main page (default page) is src/pages/Index.tsx
-- UPDATE the main page to include the new components. OTHERWISE, the user can NOT see any components!
-- ALWAYS try to use the shadcn/ui library.
-- Tailwind CSS: always use Tailwind CSS for styling components. Utilize Tailwind classes extensively for layout, spacing, colors, and other design aspects.
+- React with TypeScript and React Router. Keep routes in src/App.tsx.
+- Put browser source in src/, pages in src/pages/, and components in src/components/.
+- The default page is src/pages/Index.tsx; include new main-page components there.
+- Use shadcn/ui and Tailwind CSS; lucide-react and Radix UI are installed.
 
-Available packages and libraries:
+# Server and Neon
 
-- The lucide-react package is installed for icons.
-- You ALREADY have ALL the shadcn/ui components and their dependencies installed. So you don't need to install them again.
-- You have ALL the necessary Radix UI components installed.
-- Use prebuilt components from the shadcn/ui library after importing them. Note that these files shouldn't be edited, so make new components if you need to change them.
+- Nitro's Vite plugin runs before React and the component tagger; use node-server in development and the Vercel preset for builds. Vite 8 supports the installed Nitro plugin.
+- Server routes live in server/routes/; .get.ts restricts a route to GET.
+- Import defineHandler from nitro and h3 utilities from nitro/h3 explicitly.
+- Reuse server/utils/db.ts for Neon queries and import sql explicitly in handlers.
+- DATABASE_URL and NEON_AUTH_BASE_URL remain server-only. Never import server modules or @neondatabase/serverless into src/.
+- /api/database-health is a public read-only connection probe; it exposes no records or credentials.
+- Neon is connected but application profiles/social/auth/payment flows still use Supabase. Do not treat the migration as complete or delete existing data.
 
 # Accounts
 
