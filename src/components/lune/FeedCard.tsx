@@ -166,7 +166,7 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
   const body = isRepost && post.repost_content ? post.repost_content : post.content;
 
   return (
-    <article className="px-4 md:px-6 py-4 hover:bg-white/[0.015] transition-colors">
+    <article className="lune-spot lune-spot--soft px-4 md:px-6 py-4 hover:bg-white/[0.015] transition-colors">
       {(post.repostedBy || (isRepost && post.profiles?.username)) && (
         <button
           onClick={() => navigateToProfile(post.repostedBy || post.profiles?.username)}

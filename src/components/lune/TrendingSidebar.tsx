@@ -8,7 +8,7 @@ const TrendingSidebar = () => {
   const { tokens, loading, error, updatedAt } = useTokenData();
   return (
     <aside className="w-80 shrink-0 hidden xl:block py-6 space-y-4 sticky top-[72px] h-[calc(100vh-72px)] overflow-y-auto no-scrollbar">
-      <section className="lune-card p-5">
+      <section className="lune-card lune-tilt p-5" data-tilt="4">
         <div className="flex items-center justify-between mb-1">
           <h2 className="font-display font-bold">Market quotes</h2>
           {updatedAt && (
@@ -65,7 +65,7 @@ const TrendingSidebar = () => {
         </Link>
       </section>
 
-      <section className="lune-card p-5">
+      <section className="lune-card lune-tilt p-5" data-tilt="4">
         <div className="flex items-center gap-2 mb-1.5">
           <Radio size={16} className="text-lune-300" />
           <h2 className="font-display font-bold">Audio Spaces</h2>

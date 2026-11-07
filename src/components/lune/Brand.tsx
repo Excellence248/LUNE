@@ -2,23 +2,16 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import LuneFollowLogo from '@/components/auth/LuneFollowLogo';
+import LuneMoon from './LuneMoon';
 
+/** Small brand mark: the live moon with cursor-tracking eyes. */
 export const LuneMark = ({ className, glow = true }: { className?: string; glow?: boolean }) => (
-  <span className={cn('relative inline-flex shrink-0', className)}>
-    {glow && <span aria-hidden className="absolute inset-0 rounded-full bg-lune-500/50 blur-md animate-glow-pulse" />}
-    <img
-      src="/lune-mascot.jpg"
-      alt=""
-      className="relative h-full w-full rounded-full object-cover scale-[1.65]"
-      style={{ clipPath: 'circle(30%)' }}
-      draggable={false}
-    />
-  </span>
+  <LuneMoon className={className} glow={glow} tilt={18} />
 );
 
 export const LuneLogo = ({ onClick, className }: { onClick?: () => void; className?: string }) => (
   <Link to="/" onClick={onClick} className={cn('flex items-center gap-2.5 group', className)} aria-label="Lune home">
-    <LuneMark className="h-9 w-9 transition-transform duration-500 group-hover:rotate-12" />
+    <LuneMark className="h-9 w-9 transition-transform duration-500 group-hover:scale-110" />
     <span className="font-display text-xl font-bold tracking-tight lune-glow-text">lune</span>
   </Link>
 );

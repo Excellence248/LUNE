@@ -31,6 +31,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useWallet } from '@/context/WalletContext';
 import { showError } from '@/utils/toast';
 import { LuneLogo } from './Brand';
+import MoonCompanion from './MoonCompanion';
 
 export const navSections = [
   {
@@ -100,7 +101,7 @@ const NavLink = ({
       'relative flex items-center gap-3 px-3 py-2 rounded-xl text-[13.5px] transition-all duration-200 group',
       active
         ? 'text-white bg-gradient-to-r from-lune-500/20 via-lune-500/[0.07] to-transparent'
-        : 'text-white/50 hover:text-white hover:bg-white/[0.04]'
+        : 'text-white/50 hover:text-white hover:bg-white/[0.04] hover:translate-x-0.5'
     )}
   >
     {active && (
@@ -139,6 +140,10 @@ export const SidebarContent = ({ onClose }: { onClose?: () => void }) => {
           </div>
         ))}
       </nav>
+
+      <div className="hidden lg:block pt-3 border-t border-white/[0.06]">
+        <MoonCompanion />
+      </div>
 
       <div className="p-3 border-t border-white/[0.06] space-y-0.5">
         <NavLink icon={Settings} label="Settings" path="/settings" active={location.pathname === '/settings'} onClick={onClose} />

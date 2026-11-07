@@ -98,13 +98,9 @@
 }
 
 @layer components {
-  /* Ambient space background: nebula glow + faint stars */
+  /* Page roots stay transparent so the global <CosmicFX /> space layer shows through. */
   .lune-backdrop {
-    background:
-      radial-gradient(60rem 40rem at 85% -10%, hsl(271 91% 50% / 0.30), transparent 60%),
-      radial-gradient(45rem 35rem at -10% 110%, hsl(230 90% 55% / 0.24), transparent 60%),
-      radial-gradient(35rem 30rem at 55% 45%, hsl(300 80% 50% / 0.10), transparent 65%),
-      hsl(var(--background));
+    background: transparent;
   }
 
   /*
@@ -148,6 +144,7 @@
   @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
     .glass, .glass-strong, .glass-bar, .glass-soft { background: hsl(260 35% 9% / 0.95); }
   }
+  /* Static star texture for banners (the page-wide parallax field lives in CosmicFX). */
   .lune-stars {
     background-image:
       radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.35), transparent 50%),
@@ -161,7 +158,68 @@
 
   /* Glass surface used for cards and panels */
   .lune-card {
-    @apply glass rounded-3xl;
+    @apply relative rounded-3xl border border-white/[0.07] bg-white/[0.025] backdrop-blur-xl;
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.05),
+      0 24px 60px -30px rgba(0, 0, 0, 0.8);
+  }
+  /* Cursor spotlight: a soft glow inside + a lit border under the pointer. */
+  .lune-card::before,
+  .lune-spot::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 0%), hsl(271 91% 70% / 0.09), transparent 45%);
+    z-index: -1;
+  }
+  .lune-card::after,
+  .lune-spot::after {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    background: radial-gradient(260px circle at var(--mx, 50%) var(--my, 0%), hsl(271 95% 78% / 0.55), transparent 60%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    z-index: 1;
+  }
+  .lune-card:hover::before,
+  .lune-card:hover::after,
+  .lune-spot:hover::before,
+  .lune-spot:hover::after {
+    opacity: 1;
+  }
+  .lune-card,
+  .lune-spot {
+    isolation: isolate;
+  }
+  .lune-spot {
+    position: relative;
+  }
+  .lune-spot--soft::after {
+    display: none;
+  }
+
+  /* 3D tilt toward the cursor (driven by CosmicFX). data-tilt sets strength. */
+  .lune-tilt {
+    transform: perspective(1100px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+    transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.6s ease;
+    will-change: transform;
+  }
+  .lune-tilt.is-tilting {
+    transition: transform 0.12s ease-out, box-shadow 0.6s ease;
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.06),
+      0 40px 80px -40px hsl(271 91% 50% / 0.45);
   }
   .lune-card-hover {
     @apply transition-all duration-300 hover:border-white/25;
@@ -169,9 +227,22 @@
 
   /* Primary call-to-action */
   .lune-btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-b from-lune-400 to-lune-600 px-5 font-semibold text-white transition-all
-      hover:brightness-110 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40;
+    @apply relative isolate overflow-hidden inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-b from-lune-400 to-lune-600 px-5 font-semibold text-white transition-all
+      hover:brightness-110 hover:-translate-y-px active:translate-y-0 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40;
     box-shadow: 0 0 0 1px hsl(271 91% 75% / 0.35) inset, 0 8px 24px -8px hsl(271 91% 60% / 0.7);
+  }
+  /* Light sweep on hover */
+  .lune-btn::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.35) 50%, transparent 70%);
+    transform: translateX(-120%);
+    transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .lune-btn:hover::after {
+    transform: translateX(120%);
   }
 
   .lune-input {
@@ -186,11 +257,256 @@
   .lune-glow-text {
     @apply bg-gradient-to-br from-white via-lune-100 to-lune-300 bg-clip-text text-transparent;
   }
+  /* Slow iridescent shimmer for hero words */
+  .lune-shimmer-text {
+    background: linear-gradient(100deg, #ede3ff 0%, #c4a0ff 25%, #ffffff 45%, #a974ff 65%, #ede3ff 100%);
+    background-size: 220% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: lune-shimmer 7s linear infinite;
+  }
 
   .text-up { color: hsl(var(--up)); }
   .text-down { color: hsl(var(--down)); }
   .bg-up-soft { background: hsl(var(--up) / 0.1); }
   .bg-down-soft { background: hsl(var(--down) / 0.1); }
+}
+
+/* ---------------------------------------------------------------------------
+ * Lune moon character (LuneMoon.tsx)
+ * ------------------------------------------------------------------------- */
+.lune-moon-halo {
+  position: absolute;
+  inset: -18%;
+  border-radius: 9999px;
+  background: radial-gradient(closest-side, hsl(271 95% 62% / 0.55), hsl(271 95% 55% / 0.18) 60%, transparent);
+  filter: blur(6px);
+  animation: glow-pulse 3.5s ease-in-out infinite;
+}
+.lune-moon-tilt {
+  will-change: transform;
+}
+.lune-moon-sphere {
+  /* Rim light + core shadow make the flat artwork read as a sphere. */
+  box-shadow:
+    inset 0 0 0 1px hsl(271 100% 85% / 0.25),
+    inset -0.08em -0.1em 0.3em hsl(271 100% 80% / 0.2),
+    0 0.15em 0.6em -0.1em hsl(271 95% 50% / 0.6);
+  transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.lune-moon-face {
+  transform: scale(1.07);
+  transform-origin: 49.69% 50.47%;
+  will-change: transform;
+}
+/* The cursor acts as the light source: the far side falls into shadow. */
+.lune-moon-light {
+  pointer-events: none;
+  background:
+    radial-gradient(circle at var(--lx, 50%) var(--ly, 45%), rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 32%),
+    radial-gradient(circle at var(--lx, 50%) var(--ly, 45%), transparent 48%, rgba(14, 2, 32, 0.32) 100%);
+  mix-blend-mode: soft-light;
+}
+.lune-moon .lune-eye {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.09s ease-in;
+}
+.lune-moon .lune-glint {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.3s ease;
+}
+.lune-moon:hover .lune-glint {
+  transform: scale(1.18);
+}
+.lune-moon .lune-happy-eye {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.lune-moon.is-blinking .lune-eye {
+  transform: scaleY(0.06);
+}
+.lune-moon.is-happy .lune-eye {
+  transform: scaleY(0);
+}
+.lune-moon.is-happy .lune-happy-eye {
+  opacity: 1;
+}
+.lune-moon.is-happy .lune-moon-sphere {
+  animation: lune-boop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes lune-boop {
+  0% { transform: scale(1, 1); }
+  25% { transform: scale(1.14, 0.86); }
+  50% { transform: scale(0.93, 1.08); }
+  75% { transform: scale(1.03, 0.97); }
+  100% { transform: scale(1, 1); }
+}
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+@keyframes lune-shimmer {
+  to { background-position: -220% 0; }
+}
+
+/* ---------------------------------------------------------------------------
+ * Global space layer (CosmicFX.tsx)
+ * ------------------------------------------------------------------------- */
+body {
+  background:
+    radial-gradient(70rem 45rem at 85% -10%, hsl(271 91% 45% / 0.18), transparent 60%),
+    radial-gradient(50rem 35rem at -10% 110%, hsl(250 90% 50% / 0.12), transparent 60%),
+    hsl(var(--background));
+  background-attachment: fixed;
+}
+.lune-space {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.lune-nebula {
+  position: absolute;
+  inset: -15%;
+  background:
+    radial-gradient(38rem 26rem at 20% 25%, hsl(280 90% 55% / 0.08), transparent 70%),
+    radial-gradient(30rem 22rem at 78% 70%, hsl(255 95% 60% / 0.08), transparent 70%),
+    conic-gradient(from 200deg at 60% 40%, transparent, hsl(271 91% 60% / 0.05), transparent 30%);
+  transform: translate3d(calc(var(--cursor-nx, 0) * -18px), calc(var(--cursor-ny, 0) * -18px), 0);
+  transition: transform 1.2s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: lune-nebula-drift 40s ease-in-out infinite alternate;
+}
+.lune-starlayer {
+  position: absolute;
+  inset: -40px;
+  transform: translate3d(calc(var(--cursor-nx, 0) * var(--depth) * -1), calc(var(--cursor-ny, 0) * var(--depth) * -1), 0);
+  transition: transform 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.lune-starfield {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: 9999px;
+  background: transparent;
+  animation: lune-stars-drift 240s linear infinite, lune-twinkle 6s ease-in-out infinite;
+}
+.lune-starfield::after {
+  content: "";
+  position: absolute;
+  top: 2000px;
+  left: 0;
+  width: inherit;
+  height: inherit;
+  border-radius: inherit;
+  box-shadow: inherit;
+}
+.lune-shooting-star {
+  position: absolute;
+  top: 12%;
+  left: 70%;
+  width: 140px;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(237, 227, 255, 0.9), transparent);
+  transform: rotate(-20deg) translateX(0);
+  opacity: 0;
+  animation: lune-shoot 11s ease-in 3s infinite;
+}
+.lune-shooting-star--late {
+  top: 38%;
+  left: 92%;
+  animation-delay: 8.5s;
+  animation-duration: 17s;
+}
+.lune-grain {
+  position: absolute;
+  inset: 0;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.lune-cursor-aura {
+  display: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .lune-cursor-aura {
+    display: block;
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: -1;
+    width: 560px;
+    height: 560px;
+    margin: -280px 0 0 -280px;
+    border-radius: 9999px;
+    pointer-events: none;
+    background: radial-gradient(closest-side, hsl(271 91% 60% / 0.07), transparent);
+    transform: translate3d(var(--cursor-x, -999px), var(--cursor-y, -999px), 0);
+    transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+}
+
+@keyframes lune-stars-drift {
+  from { transform: translateY(0); }
+  to { transform: translateY(-2000px); }
+}
+@keyframes lune-twinkle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+@keyframes lune-nebula-drift {
+  from { filter: hue-rotate(0deg); }
+  to { filter: hue-rotate(-25deg); }
+}
+@keyframes lune-shoot {
+  0% { opacity: 0; transform: rotate(-20deg) translateX(0); }
+  3% { opacity: 1; }
+  10% { opacity: 0; transform: rotate(-20deg) translateX(-520px); }
+  100% { opacity: 0; transform: rotate(-20deg) translateX(-520px); }
+}
+
+/* Orbit rings for hero moons */
+.lune-orbit {
+  position: absolute;
+  inset: -22%;
+  border-radius: 9999px;
+  border: 1px solid hsl(271 91% 75% / 0.22);
+  transform: rotateX(72deg) rotateZ(0deg);
+  animation: lune-orbit-spin 18s linear infinite;
+  pointer-events: none;
+}
+.lune-orbit::before {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: #ede3ff;
+  box-shadow: 0 0 12px 3px hsl(271 91% 70% / 0.9);
+}
+.lune-orbit--wide {
+  inset: -42%;
+  border-color: hsl(271 91% 75% / 0.1);
+  animation-duration: 30s;
+  animation-direction: reverse;
+}
+@keyframes lune-orbit-spin {
+  to { transform: rotateX(72deg) rotateZ(360deg); }
+}
+
+/* Route enter */
+.lune-page-enter {
+  animation: lune-page-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes lune-page-in {
+  from { opacity: 0; transform: translateY(14px); filter: blur(4px); }
+  to { opacity: 1; transform: none; filter: none; }
 }
 
 .custom-scrollbar::-webkit-scrollbar {

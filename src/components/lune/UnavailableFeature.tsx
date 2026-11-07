@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
+import LuneMoon from './LuneMoon';
 
 interface UnavailableFeatureProps {
   title: string;
@@ -12,18 +13,12 @@ interface UnavailableFeatureProps {
  */
 const UnavailableFeature = ({ title, description }: UnavailableFeatureProps) => (
   <div className="max-w-3xl mx-auto w-full pt-4 md:pt-10">
-    <div className="lune-card relative overflow-hidden px-6 py-12 md:px-14 md:py-16 text-center">
+    <div className="lune-card lune-tilt relative overflow-hidden px-6 py-12 md:px-14 md:py-16 text-center" data-tilt="3">
       <div aria-hidden className="absolute -top-24 left-1/2 -translate-x-1/2 h-64 w-64 rounded-full bg-lune-500/20 blur-3xl" />
 
-      <div className="relative mx-auto mb-8 h-32 w-32 md:h-40 md:w-40 animate-float">
-        <div aria-hidden className="absolute inset-4 rounded-full bg-lune-500/40 blur-2xl" />
-        <img
-          src="/lune-mascot.jpg"
-          alt="Lune mascot"
-          className="relative h-full w-full object-cover scale-[1.6]"
-          style={{ clipPath: 'circle(30%)' }}
-          draggable={false}
-        />
+      <div className="relative mx-auto mb-10 h-28 w-28 md:h-36 md:w-36">
+        <span aria-hidden className="lune-orbit" />
+        <LuneMoon className="h-28 w-28 md:h-36 md:w-36" float boop tilt={16} label="Lune, the moon mascot" />
       </div>
 
       <p className="lune-eyebrow mb-3">Not connected yet</p>
