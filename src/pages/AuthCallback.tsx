@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { useSession } from '@/context/SessionContext';
 import { resolveAuthSession } from '@/lib/auth-callback';
 import { authErrorMessage } from '@/lib/auth-errors';
+import { postAuthPath } from '@/lib/onboarding';
 
 const AuthCallback = () => {
   const { user, loading, authError, recoveryMode, refreshProfile } = useSession();
@@ -28,7 +29,7 @@ const AuthCallback = () => {
   }, []);
 
   if (complete && recovery) return <Navigate to="/reset-password" replace />;
-  if (complete && user && !loading) return <Navigate to="/" replace />;
+  if (complete && user && !loading) return <Navigate to={postAuthPath(user)} replace />;
   return (
     <AuthShell title="Finishing sign-in" description="Confirming your email and preparing your profile.">
       {error ? <div className="space-y-4"><p role="alert" className="text-sm text-red-200">{error}</p><Button asChild className="w-full"><Link to="/signin">Go to login</Link></Button><Button asChild variant="outline" className="w-full"><Link to="/confirm-email">Request a new confirmation email</Link></Button></div> : complete && authError && !loading ? <div className="space-y-3"><p role="alert" className="text-sm text-red-200">{authError}</p><Button onClick={() => void refreshProfile()} className="w-full">Retry loading profile</Button></div> : <p role="status" className="flex items-center justify-center gap-2 py-6 text-white/60"><Loader2 className="h-5 w-5 animate-spin" /> Preparing your account…</p>}

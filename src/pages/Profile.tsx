@@ -41,12 +41,12 @@ const Profile = () => {
           <Link to={`/profile/${encodeURIComponent(user.username)}`} className="inline-flex items-center gap-2 text-sm text-white/60 transition-colors hover:text-white">View public profile <ArrowUpRight size={16} /></Link>
         </header>
 
-        <div className="overflow-hidden rounded-3xl border border-white/10 bg-black/20 pb-7">
+        <div className="overflow-hidden rounded-3xl border border-white/10 glass-soft pb-7">
           <ProfileHero name={user.username} handle={user.username} avatarUrl={user.avatar} bio={user.bio} actions={<ProfileEditor key={user.id} />} />
         </div>
 
         <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_260px]">
-          <section className="min-w-0 overflow-hidden rounded-3xl border border-white/10 bg-black/20" aria-label="Your activity">
+          <section className="min-w-0 overflow-hidden rounded-3xl border border-white/10 glass-soft" aria-label="Your activity">
             <Tabs defaultValue="posts">
               <div className="border-b border-white/10 px-5 pt-5 md:px-6">
                 <h2 className="mb-4 font-display text-lg font-semibold">Your activity</h2>
@@ -60,7 +60,7 @@ const Profile = () => {
             </Tabs>
           </section>
 
-          <aside className="space-y-4 rounded-3xl border border-white/10 bg-white/[0.02] p-5">
+          <aside className="space-y-4 rounded-3xl border border-white/10 glass-soft p-5">
             <div className="flex items-center gap-2 text-sm font-semibold">{user.walletAddress ? <Wallet size={16} className="text-lune-300" /> : <UserRound size={16} className="text-lune-300" />} Your account</div>
             <div>
               <p className="mb-2 text-xs text-white/40">{user.email ? 'Signed-in email · private' : 'Solana wallet'}</p>

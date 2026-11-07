@@ -10,7 +10,7 @@ const PriceTicker = () => {
   return (
     <div
       title="CoinGecko USD quotes, 24-hour change; requested every 30 seconds"
-      className="hidden xl:flex items-center gap-5 h-10 px-4 rounded-full border border-white/[0.07] bg-white/[0.02] overflow-hidden"
+      className="hidden xl:flex items-center gap-5 h-10 px-4 rounded-full border border-white/[0.07] glass-soft overflow-hidden"
     >
       {!prices.length && <span className="text-xs text-white/35">Quotes loading or unavailable</span>}
       {prices.map(p => (

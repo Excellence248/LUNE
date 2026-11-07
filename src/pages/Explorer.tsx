@@ -152,7 +152,7 @@ const Explorer = () => {
 
       {/* Filters */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
-        <div className="flex gap-1 p-1 rounded-full border border-white/[0.07] bg-white/[0.02] w-fit">
+        <div className="flex gap-1 p-1 rounded-full border border-white/[0.07] glass-soft w-fit">
           {(['All', 'Major', 'DEX'] as const).map(tab => (
             <button
               key={tab}
@@ -190,8 +190,8 @@ const Explorer = () => {
         <div className="lune-card divide-y divide-white/[0.05]" role="status" aria-label="Loading market data">
           {[0, 1, 2, 3, 4, 5].map(i => (
             <div key={i} className="h-[68px] px-5 flex items-center gap-4 animate-pulse">
-              <div className="h-10 w-10 rounded-xl bg-white/[0.05]" />
-              <div className="h-3 w-40 rounded-full bg-white/[0.05]" />
+              <div className="h-10 w-10 rounded-xl glass-soft" />
+              <div className="h-3 w-40 rounded-full glass-soft" />
             </div>
           ))}
         </div>

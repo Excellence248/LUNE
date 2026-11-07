@@ -23,7 +23,7 @@ const TrendingSidebar = () => {
         {loading ? (
           <div className="space-y-3">
             {[0, 1, 2, 3].map(i => (
-              <div key={i} className="h-10 rounded-xl bg-white/[0.04] animate-pulse" />
+              <div key={i} className="h-10 rounded-xl glass-soft animate-pulse" />
             ))}
           </div>
         ) : (

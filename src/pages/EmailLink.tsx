@@ -36,7 +36,7 @@ const EmailLink = ({ purpose }: { purpose: 'recovery' | 'confirmation' }) => {
   return (
     <AuthShell title={recovery ? 'Reset your password' : 'Confirm your email'} description={recovery ? 'Enter your account email and we’ll send a password reset link.' : 'Enter the email you signed up with to request a new confirmation link.'}>
       <form onSubmit={send} className="space-y-4">
-        <div className="space-y-2"><Label htmlFor="account-email">Email</Label><Input id="account-email" type="email" autoComplete="email" required value={email} onChange={event => setEmail(event.target.value)} disabled={sending} className="h-12 rounded-xl border-white/15 bg-white/[0.03]" /></div>
+        <div className="space-y-2"><Label htmlFor="account-email">Email</Label><Input id="account-email" type="email" autoComplete="email" required value={email} onChange={event => setEmail(event.target.value)} disabled={sending} className="h-12 rounded-xl border-white/15 glass-soft" /></div>
         {error && <p role="alert" className="text-sm text-red-200">{error}</p>}
         {sent && <p role="status" className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-3 text-sm text-emerald-200">If this address is eligible, an email is on its way. Check your inbox and spam folder.</p>}
         <Button type="submit" disabled={sending} className="h-11 w-full rounded-xl bg-lune-500 hover:bg-lune-600">{sending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Mail className="mr-2 h-4 w-4" />}{sending ? 'Sending…' : recovery ? 'Send reset link' : 'Send confirmation link'}</Button>

@@ -6,12 +6,14 @@ import SignUp from "./pages/SignUp";
 import AuthCallback from "./pages/AuthCallback";
 import EmailLink from "./pages/EmailLink";
 import ResetPassword from "./pages/ResetPassword";
+import Welcome from "./pages/Welcome";
 import Index from "./pages/Index";
 import PostDetail from "./pages/PostDetail";
 import Launchpad from "./pages/Launchpad";
 import LaunchpadDetail from "./pages/LaunchpadDetail";
 import Spaces from "./pages/Spaces";
 import LiveSpace from "./pages/LiveSpace";
+import Premium from "./pages/Premium";
 import Wallet from "./pages/Wallet";
 import Jobs from "./pages/Jobs";
 import Communities from "./pages/Communities";
@@ -46,6 +48,7 @@ const App = () => (
         <Route path="/forgot-password" element={<EmailLink purpose="recovery" />} />
         <Route path="/confirm-email" element={<EmailLink purpose="confirmation" />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/welcome" element={<RequireAccount><Welcome /></RequireAccount>} />
         <Route path="/" element={<Index />} />
         <Route path="/post/:id" element={<PostDetail />} />
         <Route path="/explorer" element={<Explorer />} />
@@ -54,6 +57,7 @@ const App = () => (
         <Route path="/launchpad/:id" element={<LaunchpadDetail />} />
         <Route path="/degen-tools" element={<DegenTools />} />
         <Route path="/staking" element={<Staking />} />
+        <Route path="/premium" element={<Premium />} />
         <Route path="/spaces" element={<Spaces />} />
         <Route path="/spaces/:id" element={<LiveSpace />} />
         <Route path="/wallet" element={<Wallet />} />

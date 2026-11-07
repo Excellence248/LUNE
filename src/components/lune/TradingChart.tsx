@@ -100,7 +100,7 @@ const TradingChart = ({ data, symbol }: TradingChartProps) => {
         <div className="px-3 py-1 bg-lune-500/15 border border-lune-400/25 rounded-full text-xs font-mono font-semibold text-lune-200">
           {symbol}
         </div>
-        <div className="px-3 py-1 bg-white/[0.04] border border-white/10 rounded-full text-[10px] font-mono text-white/50">
+        <div className="px-3 py-1 glass-soft border border-white/10 rounded-full text-[10px] font-mono text-white/50">
           1h
         </div>
       </div>

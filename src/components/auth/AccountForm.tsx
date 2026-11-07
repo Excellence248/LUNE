@@ -7,6 +7,7 @@ import WalletModal from '@/components/lune/WalletModal';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabaseClient';
 import { useSession } from '@/context/SessionContext';
+import { postAuthPath } from '@/lib/onboarding';
 
 const AccountForm = ({ view }: { view: 'sign_in' | 'sign_up' }) => {
   const { session, user, loading, authError, recoveryMode, refreshProfile, signOut } = useSession();
@@ -15,7 +16,7 @@ const AccountForm = ({ view }: { view: 'sign_in' | 'sign_up' }) => {
   const signup = view === 'sign_up';
 
   if (session && recoveryMode) return <Navigate to="/reset-password" replace />;
-  if (user && !loading) return <Navigate to="/" replace />;
+  if (user && !loading) return <Navigate to={postAuthPath(user)} replace />;
   if (loading) return <div role="status" className="flex items-center justify-center gap-2 py-8 text-white/60"><Loader2 size={18} className="animate-spin" /> Loading your account…</div>;
   if (session) return (
     <div className="space-y-3">
@@ -54,7 +55,7 @@ const AccountForm = ({ view }: { view: 'sign_in' | 'sign_up' }) => {
       {!signup && <div className="text-right"><Link to="/forgot-password" className="text-sm text-lune-300 hover:underline">Forgot password?</Link></div>}
       {signup && <p className="text-xs leading-relaxed text-white/45">We’ll send a confirmation link to your email. Once confirmed, you can set up your profile and start posting.</p>}
       <div className="flex items-center gap-3" aria-hidden="true"><div className="h-px flex-1 bg-white/10" /><span className="text-xs text-white/40">or use a wallet</span><div className="h-px flex-1 bg-white/10" /></div>
-      <Button type="button" variant="outline" className="h-12 w-full rounded-xl border-white/15 bg-white/[0.02] hover:bg-white/5" onClick={() => setWalletOpen(true)}><Wallet className="mr-2 h-4 w-4" /> Continue with wallet</Button>
+      <Button type="button" variant="outline" className="h-12 w-full rounded-xl border-white/15 glass-soft hover:bg-white/5" onClick={() => setWalletOpen(true)}><Wallet className="mr-2 h-4 w-4" /> Continue with wallet</Button>
       <div className="space-y-3 border-t border-white/10 pt-5 text-center text-sm text-white/50">
         <p>{signup ? 'Already have an account?' : 'Don’t have an account?'}{' '}<Link to={signup ? '/signin' : '/signup'} className="font-semibold text-lune-300 hover:underline">{signup ? 'Sign in' : 'Sign up'}</Link></p>
         <p><Link to="/confirm-email" className="text-xs text-white/45 hover:text-white">Need a new confirmation email?</Link></p>

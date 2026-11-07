@@ -43,7 +43,7 @@ const PostView = ({ id }: { id: string }) => {
       <div className="mx-auto max-w-2xl">
         <div className="mb-5 flex items-center gap-3"><Button asChild variant="ghost" size="icon" className="rounded-full"><Link to="/" aria-label="Back to feed"><ArrowLeft size={20} /></Link></Button><h1 className="font-display text-xl font-bold">Post</h1></div>
         {error && <div className="mb-4 space-y-3 rounded-xl border border-red-400/20 bg-red-400/10 p-4"><p role="alert" className="text-sm text-red-200">{error}</p><Button variant="outline" disabled={loading} onClick={() => setRetry(previous => previous + 1)}>Try again</Button></div>}
-        {post ? <div className="overflow-hidden rounded-3xl border border-white/10 bg-black/20"><FeedCard post={post} initialCommentsOpen /></div> : loading ? <div role="status" className="flex items-center justify-center gap-2 py-16 text-white/50"><Loader2 className="h-5 w-5 animate-spin" /> Loading post…</div> : !error && <div className="lune-card"><EmptyState icon={MessageCircle} title="Post not found">This post is no longer available, or the link is incorrect.</EmptyState></div>}
+        {post ? <div className="overflow-hidden rounded-3xl border border-white/10 glass-soft"><FeedCard post={post} initialCommentsOpen /></div> : loading ? <div role="status" className="flex items-center justify-center gap-2 py-16 text-white/50"><Loader2 className="h-5 w-5 animate-spin" /> Loading post…</div> : !error && <div className="lune-card"><EmptyState icon={MessageCircle} title="Post not found">This post is no longer available, or the link is incorrect.</EmptyState></div>}
       </div>
     </Layout>
   );

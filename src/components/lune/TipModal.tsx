@@ -9,7 +9,7 @@ interface TipModalProps {
 
 const TipModal = ({ isOpen, onClose, recipient }: TipModalProps) => (
   <Dialog open={isOpen} onOpenChange={open => { if (!open) onClose(); }}>
-    <DialogContent className="bg-popover/95 backdrop-blur-2xl border-white/10 text-white rounded-3xl max-w-sm">
+    <DialogContent className="glass-strong backdrop-blur-2xl border-white/10 text-white rounded-3xl max-w-sm">
       <DialogHeader className="items-center text-center space-y-3">
         <div className="h-12 w-12 rounded-2xl bg-amber-300/10 border border-amber-300/20 flex items-center justify-center text-amber-300">
           <Coins size={22} />

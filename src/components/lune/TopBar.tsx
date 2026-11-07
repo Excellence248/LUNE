@@ -35,7 +35,7 @@ const TopBar = () => {
   const displayName = user ? (user.walletAddress && user.username === user.walletAddress ? shortWalletAddress(user.walletAddress) : user.username) : 'Account';
 
   return (
-    <header className="h-16 lg:h-[72px] border-b border-white/[0.06] bg-[hsl(260_40%_3%/0.7)] backdrop-blur-2xl sticky top-0 z-40 px-3 md:px-6 lg:px-10 flex items-center justify-between gap-3">
+    <header className="h-[calc(4rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] lg:h-[72px] lg:pt-0 glass-bar border-b sticky top-0 z-40 px-3 md:px-6 lg:px-10 flex items-center justify-between gap-3">
       <div className="flex items-center gap-2 lg:gap-4 flex-1 min-w-0">
         <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
           <SheetTrigger asChild>
@@ -43,7 +43,7 @@ const TopBar = () => {
               <Menu size={20} />
             </button>
           </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-72 bg-[hsl(260_40%_4%)] border-white/[0.06]">
+          <SheetContent side="left" className="p-0 w-72 glass-strong border-white/10">
             <SheetTitle className="sr-only">Navigation</SheetTitle>
             <SidebarContent onClose={() => setMenuOpen(false)} />
           </SheetContent>
@@ -82,7 +82,7 @@ const TopBar = () => {
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
-              className="w-60 bg-popover/95 backdrop-blur-2xl border-white/10 rounded-2xl p-1.5 text-white"
+              className="w-60 glass-strong backdrop-blur-2xl border-white/10 rounded-2xl p-1.5 text-white"
             >
               <DropdownMenuLabel className="px-2.5 py-2">
                 <p className="text-sm font-semibold truncate">{displayName}</p>

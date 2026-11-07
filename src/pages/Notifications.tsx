@@ -73,7 +73,7 @@ const NotificationList = () => {
                 {!notif.read && <span className="absolute inset-y-3 left-0 w-[3px] rounded-r-full bg-lune-400" />}
                 <Link to={profilePath} className="relative shrink-0" aria-label={`View ${notif.actor_profile?.username || 'actor'} profile`}>
                   <Avatar className="h-11 w-11 ring-1 ring-white/10"><AvatarImage src={notif.actor_profile?.avatar_url} /><AvatarFallback className="bg-gradient-to-br from-lune-600/70 to-lune-900 text-sm text-lune-100">{notif.actor_profile?.username?.[0]?.toUpperCase() || 'U'}</AvatarFallback></Avatar>
-                  <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-popover ring-2 ring-background">{getIcon(notif.type)}</span>
+                  <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full glass-strong ring-2 ring-background">{getIcon(notif.type)}</span>
                 </Link>
                 <div className="min-w-0 flex-1 pt-0.5">
                   <p className="break-words text-[15px] leading-snug text-white/70"><Link to={profilePath} className="font-semibold text-white hover:underline">@{notif.actor_profile?.username || 'Someone'}</Link>{' '}<Link to={activityPath} className="hover:text-white hover:underline">{getMessage(notif.type)}</Link></p>
@@ -83,7 +83,7 @@ const NotificationList = () => {
             );
           })}
         </div>
-      ) : notificationsLoading ? <div role="status" className="flex items-center justify-center gap-2 py-16 text-white/50"><Loader2 className="h-5 w-5 animate-spin" /> Loading notifications…</div> : <div className="lune-card"><EmptyState icon={Bell} title={notificationsError ? 'Activity unavailable' : 'All quiet'}>{notificationsError ? 'Retry loading your activity using the button above.' : 'No notifications yet. Interactions with your posts will show up here.'}</EmptyState></div>}
+      ) : notificationsLoading ? <div role="status" className="flex items-center justify-center gap-2 py-16 text-white/50"><Loader2 className="h-5 w-5 animate-spin" /> Loading notifications…</div> : <div className="lune-card"><EmptyState moon={!notificationsError} icon={Bell} title={notificationsError ? 'Activity unavailable' : 'All quiet'}>{notificationsError ? 'Retry loading your activity using the button above.' : 'No notifications yet. Interactions with your posts will show up here.'}</EmptyState></div>}
       {notificationsHasMore && <div className="text-center"><Button variant="outline" disabled={notificationsLoadingMore || notificationsLoading} onClick={() => void loadMoreNotifications()}>{notificationsLoadingMore ? 'Loading…' : 'Load older notifications'}</Button></div>}
     </div>
   );

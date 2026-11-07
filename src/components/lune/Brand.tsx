@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import LuneFollowLogo from '@/components/auth/LuneFollowLogo';
 
 export const LuneMark = ({ className, glow = true }: { className?: string; glow?: boolean }) => (
   <span className={cn('relative inline-flex shrink-0', className)}>
@@ -50,19 +51,23 @@ export const PageHeader = ({ eyebrow, title, description, icon: Icon, actions, c
 /** Quiet empty / unavailable state, consistent across the app. */
 export const EmptyState = ({
   icon: Icon,
+  moon,
   title,
   children,
   className,
 }: {
   icon?: React.ElementType;
+  /** Show the friendly cursor-tracking Lune moon instead of an icon. */
+  moon?: boolean;
   title: string;
   children?: React.ReactNode;
   className?: string;
 }) => (
   <div className={cn('flex flex-col items-center text-center py-14 px-6', className)}>
-    <div className="relative mb-5">
+    {moon && <LuneFollowLogo className="mb-4 h-28 w-28" />}
+    <div className={cn('relative mb-5', moon && 'hidden')}>
       <div className="absolute inset-0 rounded-full bg-lune-500/20 blur-xl" />
-      <div className="relative h-14 w-14 rounded-2xl border border-white/10 bg-white/[0.04] flex items-center justify-center text-lune-300">
+      <div className="relative h-14 w-14 rounded-2xl border border-white/10 glass-soft flex items-center justify-center text-lune-300">
         {Icon ? <Icon size={24} /> : <LuneMark className="h-10 w-10" glow={false} />}
       </div>
     </div>

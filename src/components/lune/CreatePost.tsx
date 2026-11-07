@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { useSocial } from '@/context/SocialContext';
 import { useWallet } from '@/context/WalletContext';
 import { showSuccess, showError } from '@/utils/toast';
+import { hasPostedFirst, markPostedFirst } from '@/lib/onboarding';
 
 const CreatePost = () => {
   const [content, setContent] = useState('');
@@ -14,8 +15,9 @@ const CreatePost = () => {
   const [posting, setPosting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const busy = useRef(false);
-  const { addPost } = useSocial();
+  const { addPost, posts } = useSocial();
   const { session, user, loading, authError, refreshProfile } = useWallet();
+  const isFirstPost = !!user && !hasPostedFirst(user.id) && !posts.some(post => post.user_id === user.id);
 
   useEffect(() => {
     if (!image) { setPreview(null); return; }
@@ -40,6 +42,7 @@ const CreatePost = () => {
     setPosting(true);
     try {
       await addPost(content, image || undefined);
+      markPostedFirst(user.id);
       setContent('');
       setImage(null);
       showSuccess('Your public post was saved.');
@@ -83,10 +86,17 @@ const CreatePost = () => {
             maxLength={2000}
             onChange={event => setContent(event.target.value)}
             onKeyDown={event => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); handlePost(); } }}
-            placeholder="What's the alpha today?"
+            placeholder={isFirstPost ? 'Say hello to Lune 👋' : "What's the alpha today?"}
             rows={2}
             className="w-full bg-transparent border-none text-[17px] text-white placeholder:text-white/30 focus:outline-none focus:ring-0 resize-none min-h-[64px] pt-2 leading-relaxed"
           />
+          {isFirstPost && !content && (
+            <div className="mb-3 flex flex-wrap gap-2" aria-label="First post ideas">
+              {['👋 Hey Lune, I just joined!', '🌙 Hello from a brand new moon', 'What should I follow first?'].map(idea => (
+                <button key={idea} type="button" onClick={() => setContent(idea)} className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-white/55 transition-colors hover:border-lune-300/40 hover:text-white">{idea}</button>
+              ))}
+            </div>
+          )}
           {preview && (
             <div className="relative mt-2 mb-3 rounded-2xl overflow-hidden border border-white/10 max-w-md">
               <img src={preview} alt="Attachment preview" className="w-full h-auto max-h-80 object-cover" />

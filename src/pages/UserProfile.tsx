@@ -105,7 +105,7 @@ const PublicProfileView = ({ username }: { username: string }) => {
 
       {currentUser && !isMe && followingError && <div className="mx-4 mt-5 flex max-w-3xl flex-wrap items-center gap-3 rounded-xl border border-red-400/20 bg-red-400/10 p-3 md:mx-10"><p role="alert" className="text-sm text-red-200">{followingError}</p><Button size="sm" variant="outline" disabled={followingLoading} onClick={() => void refreshFollowing()}>Retry status</Button></div>}
 
-      <section className="mx-4 mb-8 mt-8 max-w-4xl overflow-hidden rounded-3xl border border-white/10 bg-black/20 md:mx-10" aria-label={`Activity by ${profile.username}`}>
+      <section className="mx-4 mb-8 mt-8 max-w-4xl overflow-hidden rounded-3xl border border-white/10 glass-soft md:mx-10" aria-label={`Activity by ${profile.username}`}>
         <Tabs defaultValue="posts">
           <div className="border-b border-white/10 px-5 pt-5">
             <TabsList className="h-auto gap-6 rounded-none bg-transparent p-0">

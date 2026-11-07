@@ -5,17 +5,19 @@ import FeedCard from '@/components/lune/FeedCard';
 import CreatePost from '@/components/lune/CreatePost';
 import TrendingSidebar from '@/components/lune/TrendingSidebar';
 import { EmptyState } from '@/components/lune/Brand';
-import { RefreshCw, Info, Inbox, AlertTriangle } from 'lucide-react';
+import GettingStarted from '@/components/lune/GettingStarted';
+import WelcomeBurst from '@/components/lune/WelcomeBurst';
+import { RefreshCw, Info, AlertTriangle } from 'lucide-react';
 import { useSocial } from '@/context/SocialContext';
 import { useWallet } from '@/context/WalletContext';
 
 const PostSkeleton = () => (
   <div className="p-5 md:px-6 flex gap-3.5 animate-pulse">
-    <div className="h-11 w-11 rounded-full bg-white/[0.06]" />
+    <div className="h-11 w-11 rounded-full glass-soft" />
     <div className="flex-1 space-y-3 pt-1">
-      <div className="h-3 w-32 rounded-full bg-white/[0.06]" />
-      <div className="h-3 w-full rounded-full bg-white/[0.04]" />
-      <div className="h-3 w-2/3 rounded-full bg-white/[0.04]" />
+      <div className="h-3 w-32 rounded-full glass-soft" />
+      <div className="h-3 w-full rounded-full glass-soft" />
+      <div className="h-3 w-2/3 rounded-full glass-soft" />
     </div>
   </div>
 );
@@ -39,6 +41,7 @@ const Index = () => {
 
   return (
     <Layout noPadding className="flex justify-center gap-8 xl:px-8">
+      <WelcomeBurst />
       <div className="flex-1 w-full max-w-2xl min-w-0 lg:border-x border-white/[0.06] bg-background/40">
         <div className="sticky top-16 lg:top-[72px] z-30 px-4 md:px-6 h-14 flex items-center justify-between border-b border-white/[0.06] bg-[hsl(260_40%_3%/0.75)] backdrop-blur-2xl">
           <div className="flex items-center gap-3">
@@ -60,8 +63,8 @@ const Index = () => {
 
         <CreatePost key={user?.id || 'guest'} />
 
-        {user && user.username === `user_${user.id.replace(/-/g, '')}` && <div className="mx-4 my-3 rounded-2xl border border-lune-400/20 bg-lune-500/10 p-4 text-sm md:mx-6"><p className="font-semibold">Welcome to Lune. Make your profile yours.</p><p className="mt-1 text-white/55">Choose a username, add a photo and bio, then share your first post.</p><Link to="/profile" className="mt-3 inline-block font-semibold text-lune-300 hover:underline">Set up my profile →</Link></div>}
-        <div className="mx-4 md:mx-6 my-3 flex items-start gap-2.5 rounded-2xl border border-white/[0.06] bg-white/[0.02] px-3.5 py-2.5 text-xs text-white/40 leading-relaxed">
+        <GettingStarted />
+        <div className="mx-4 md:mx-6 my-3 flex items-start gap-2.5 rounded-2xl border border-white/[0.06] glass-soft px-3.5 py-2.5 text-xs text-white/40 leading-relaxed">
           <Info size={14} className="mt-0.5 shrink-0 text-lune-300/70" />
           <p>Posts are user-submitted and not fact-checked. Nothing here is financial advice.</p>
         </div>
@@ -82,8 +85,11 @@ const Index = () => {
               <button onClick={handleRefresh} disabled={refreshing} className="lune-btn h-9 mt-4 block mx-auto">{refreshing ? 'Retrying…' : 'Retry'}</button>
             </EmptyState>
           ) : (
-            <EmptyState icon={Inbox} title="No posts yet">
-              Be the first to share something with the community.
+            <EmptyState moon title="It’s quiet up here">
+              No posts yet. Be the first to share something with the community.
+              <span className="mt-4 flex justify-center gap-2">
+                {user ? <button onClick={() => { const box = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Write a public post"]'); box?.scrollIntoView({ behavior: 'smooth', block: 'center' }); box?.focus(); }} className="lune-btn h-9">Write a post</button> : <Link to="/signup" className="lune-btn inline-flex h-9 items-center">Create account</Link>}
+              </span>
             </EmptyState>
           )}
         </div>

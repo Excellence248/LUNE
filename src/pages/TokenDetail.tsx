@@ -70,7 +70,7 @@ const TokenDetail = () => {
                   ['Liquidity', data.liquidity],
                   ['24h volume', data.volume],
                 ].map(([label, value]) => (
-                  <div key={label} className="rounded-2xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
+                  <div key={label} className="rounded-2xl border border-white/[0.06] glass-soft px-4 py-3">
                     <p className="text-[11px] uppercase tracking-wider text-white/35">{label}</p>
                     <p className="font-mono text-sm mt-1">{value}</p>
                   </div>
@@ -90,7 +90,7 @@ const TokenDetail = () => {
                 <h2 className="font-display font-semibold">Price history</h2>
               </div>
               {historyLoading ? (
-                <div className="h-[400px] mx-6 mb-6 rounded-2xl bg-white/[0.03] animate-pulse" />
+                <div className="h-[400px] mx-6 mb-6 rounded-2xl glass-soft animate-pulse" />
               ) : history.length > 0 ? (
                 <>
                   <p className="px-6 pb-2 text-[11px] text-white/35">

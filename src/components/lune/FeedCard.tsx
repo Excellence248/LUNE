@@ -1,4 +1,5 @@
 "use client";
+import VerifiedBadge from '@/components/lune/VerifiedBadge';
 
 import React, { useEffect, useRef, useState } from 'react';
 import { MessageCircle, Repeat2, Heart, Coins, SendHorizontal } from 'lucide-react';
@@ -195,6 +196,7 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
             >
               {displayName || 'Lune user'}
             </button>
+            <VerifiedBadge username={displayUsername} />
             {displayUsername && <span className="text-white/35 truncate hidden sm:inline">@{displayName}</span>}
             <span className="text-white/25">·</span>
             <Link to={`/post/${post.id}`} aria-label="Open post and replies" className="shrink-0 text-sm text-white/35 hover:underline">
@@ -259,7 +261,7 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
           </div>
 
           {showComments && (
-            <div className="mt-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3 space-y-3">
+            <div className="mt-3 rounded-2xl border border-white/[0.06] glass-soft p-3 space-y-3">
               {post.replies?.length ? (
                 post.replies.map(reply => (
                   <div key={reply.id} className="flex gap-2.5">
@@ -279,6 +281,7 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
                         >
                           {reply.profiles?.username}
                         </button>
+                        <VerifiedBadge username={reply.profiles?.username} />
                         <span className="text-white/30">{shortAgo(reply.created_at)}</span>
                       </div>
                       <p className="selectable whitespace-pre-wrap text-sm text-white/70 leading-relaxed break-words">{reply.content}</p>

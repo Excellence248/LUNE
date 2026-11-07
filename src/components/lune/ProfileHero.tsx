@@ -1,3 +1,4 @@
+import VerifiedBadge from '@/components/lune/VerifiedBadge';
 import React from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
@@ -35,7 +36,7 @@ const ProfileHero = ({ name, handle, subtitle, avatarUrl, bio, actions, footnote
 
       <div className="mt-4 space-y-3">
         <div>
-          <h1 className="break-all text-2xl md:text-3xl font-bold">{name}</h1>
+          <h1 className="break-all text-2xl md:text-3xl font-bold">{name} <VerifiedBadge username={handle} /></h1>
           {handle && <p className="break-all text-white/40 text-sm">@{handle}</p>}
           {subtitle && <p className="break-all text-white/40 text-sm font-mono">{subtitle}</p>}
         </div>

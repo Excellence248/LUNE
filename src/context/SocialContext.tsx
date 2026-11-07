@@ -75,11 +75,24 @@ interface SocialContextType {
   isFollowing: (targetUserId: string) => boolean;
   searchUsers: (query: string) => Promise<PublicProfile[]>;
   getProfileByUsername: (username: string) => Promise<PublicProfile | null>;
+  followingCount: number;
   followingLoading: boolean;
   followingError: string | null;
   refreshFollowing: () => Promise<void>;
   markNotificationsAsRead: (ids?: string[]) => Promise<void>;
 }
+
+const postErrorMessage = (error: { code?: string; message?: string } | null) => {
+  const code = error?.code || '';
+  const detail = `${error?.message || 'unknown error'}${code ? ` (${code})` : ''}`;
+  if (code === '42501') return `The database refused this post (permission policy). Details: ${detail}`;
+  if (code === '23503') return `Your profile record is missing in the database, so the post was rejected. Log out and back in to recreate it. Details: ${detail}`;
+  if (code === '42703' || code === 'PGRST204') return `The posts table is missing an expected column. Details: ${detail}`;
+  if (code === '42P01' || code === 'PGRST205') return `The posts table was not found in the database. Details: ${detail}`;
+  if (/failed to fetch|network/i.test(error?.message || '')) return 'The server could not be reached. Check your connection and retry.';
+  if (/jwt|token/i.test(error?.message || '')) return 'Your login session expired. Please log out and sign in again.';
+  return `Your post could not be saved. Details: ${detail}`;
+};
 
 const SocialContext = createContext<SocialContextType | undefined>(undefined);
 export const postSelect = '*, profiles(username, avatar_url, wallet_address), likes(user_id), reposts(user_id), replies(*, profiles(username, avatar_url, wallet_address))';
@@ -221,8 +234,17 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
         imageUrl = supabase.storage.from('feed-media').getPublicUrl(path).data.publicUrl;
       }
       if (currentUserId.current !== author) throw new Error('Your account changed while posting. Log in and try again.');
-      const { data, error } = await supabase.from('posts').insert({ user_id: author, content: text, image_url: imageUrl }).select(postSelect).single();
-      if (error) throw new Error('Your post could not be saved. Check your login session and connection, then retry.');
+      const insertPost = () => supabase.from('posts').insert({ user_id: author, content: text, image_url: imageUrl }).select(postSelect).single();
+      let { data, error } = await insertPost();
+      if (error && (error.code === 'PGRST301' || error.code === 'PGRST303' || /jwt|token/i.test(error.message))) {
+        // Stale access token: refresh the session once and retry before giving up.
+        const { error: refreshError } = await supabase.auth.refreshSession();
+        if (!refreshError) ({ data, error } = await insertPost());
+      }
+      if (error || !data) {
+        console.error('Post insert failed:', error);
+        throw new Error(postErrorMessage(error));
+      }
       saved = true;
       requestNumber.current += 1;
       setPosts(previous => [data as unknown as Post, ...previous.filter(post => post.id !== data.id)].slice(0, visibleCount.current));
@@ -339,7 +361,7 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
       refreshNotifications, loadMoreNotifications, refreshFeed: fetchPosts, addPost,
       toggleLike: postId => toggleRelation('likes', postId), toggleRepost: postId => toggleRelation('reposts', postId),
       addComment, followUser, unfollowUser, isFollowing: targetUserId => followingIds.includes(targetUserId),
-      followingLoading, followingError, refreshFollowing: fetchFollowing,
+      followingCount: followingIds.length, followingLoading, followingError, refreshFollowing: fetchFollowing,
       searchUsers, getProfileByUsername, markNotificationsAsRead,
     }}>
       {children}

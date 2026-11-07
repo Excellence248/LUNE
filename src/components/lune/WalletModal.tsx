@@ -35,7 +35,7 @@ const WalletModal = ({ isOpen, onClose }: WalletModalProps) => {
 
   return (
     <Dialog open={isOpen} onOpenChange={open => { if (!open && !connecting) onClose(); }}>
-      <DialogContent className="bg-popover/95 backdrop-blur-2xl border-white/10 text-white rounded-3xl max-w-sm">
+      <DialogContent className="glass-strong backdrop-blur-2xl border-white/10 text-white rounded-3xl max-w-sm">
         <DialogHeader className="items-center text-center space-y-3">
           <div className="h-12 w-12 rounded-2xl bg-lune-500/15 border border-lune-400/20 flex items-center justify-center text-lune-300"><Wallet size={22} /></div>
           <DialogTitle className="font-display text-xl">Connect your Solana wallet</DialogTitle>
@@ -45,7 +45,7 @@ const WalletModal = ({ isOpen, onClose }: WalletModalProps) => {
         </DialogHeader>
         <div className="space-y-3 pt-2">
           {wallets.map(wallet => installed.includes(wallet.name) ? (
-            <Button key={wallet.name} disabled={connecting} onClick={() => connect(wallet.name)} variant="outline" className="w-full h-12 rounded-xl bg-white/5 border-white/10 hover:bg-white/10 text-white justify-between">
+            <Button key={wallet.name} disabled={connecting} onClick={() => connect(wallet.name)} variant="outline" className="w-full h-12 rounded-xl glass-soft border-white/10 hover:bg-white/10 text-white justify-between">
               {wallet.name}
               {connecting && selected === wallet.name ? <Loader2 size={18} className="animate-spin" /> : <span className="text-xs text-lune-300">Connect & sign in</span>}
             </Button>

@@ -27,7 +27,7 @@ const Analytics = () => {
           description="Global cryptocurrency statistics from CoinGecko, refreshed every two minutes. These are not Solana network health metrics."
           actions={
             stats.updatedAt && (
-              <span className="inline-flex items-center gap-2 h-9 px-4 rounded-full border border-white/10 bg-white/[0.03] text-xs text-white/60">
+              <span className="inline-flex items-center gap-2 h-9 px-4 rounded-full border border-white/10 glass-soft text-xs text-white/60">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
                 Updated {new Date(stats.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </span>
@@ -74,7 +74,7 @@ const Analytics = () => {
         )}
 
         <div className="lune-card mt-4 p-6 flex items-start gap-4">
-          <div className="h-10 w-10 shrink-0 rounded-xl bg-white/[0.04] border border-white/10 flex items-center justify-center text-white/40">
+          <div className="h-10 w-10 shrink-0 rounded-xl glass-soft border border-white/10 flex items-center justify-center text-white/40">
             <BarChart3 size={18} />
           </div>
           <div>

@@ -24,6 +24,7 @@ import {
   Gavel,
   PlayCircle,
   LogOut,
+  BadgeCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Link, useLocation } from 'react-router-dom';
@@ -39,6 +40,7 @@ export const navSections = [
       { icon: Bell, label: 'Activity', path: '/notifications' },
       { icon: MessageCircle, label: 'Messages', path: '/messages' },
       { icon: Radio, label: 'Spaces', path: '/spaces' },
+      { icon: BadgeCheck, label: 'Premium', path: '/premium' },
       { icon: Users, label: 'Communities', path: '/communities' },
     ],
   },
@@ -158,7 +160,7 @@ export const SidebarContent = ({ onClose }: { onClose?: () => void }) => {
 
 const Sidebar = () => {
   return (
-    <aside className="fixed left-0 top-0 h-screen w-72 hidden lg:flex flex-col z-50 border-r border-white/[0.06] bg-[hsl(260_40%_3.5%/0.85)] backdrop-blur-2xl">
+    <aside className="fixed left-0 top-0 h-screen w-72 hidden lg:flex flex-col z-50 glass-bar border-r">
       <SidebarContent />
     </aside>
   );

@@ -25,7 +25,7 @@ const BottomNav = () => {
       <div aria-hidden className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-background via-background/80 to-transparent" />
       <nav
         aria-label="Primary"
-        className="relative mx-auto mb-[max(12px,env(safe-area-inset-bottom))] w-[calc(100%-24px)] max-w-md h-16 rounded-[1.75rem] border border-white/[0.08] bg-[hsl(260_35%_7%/0.85)] backdrop-blur-2xl shadow-[0_20px_50px_-10px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.06)] grid grid-cols-5 px-1.5 pointer-events-auto"
+        className="relative mx-auto mb-[max(12px,env(safe-area-inset-bottom))] w-[calc(100%-24px)] max-w-md h-16 rounded-[1.75rem] glass grid grid-cols-5 px-1.5 pointer-events-auto"
       >
         {items.map(item => {
           const isActive = location.pathname === item.path;

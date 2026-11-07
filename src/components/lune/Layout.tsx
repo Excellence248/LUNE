@@ -18,7 +18,7 @@ const Layout = ({ children, className, noPadding = false }: LayoutProps) => {
       <Sidebar />
       <main className="relative lg:pl-72 min-h-screen flex flex-col w-full pb-28 lg:pb-0">
         <TopBar />
-        <div className={cn('flex-1 w-full mx-auto', !noPadding && 'px-4 py-6 md:px-10 md:py-10', className)}>
+        <div className={cn('flex-1 w-full max-w-[1680px] mx-auto', !noPadding && 'px-4 py-6 md:px-10 md:py-10', className)}>
           <Repost />
           {children}
         </div>

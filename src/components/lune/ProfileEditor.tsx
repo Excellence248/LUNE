@@ -79,18 +79,18 @@ const ProfileEditor = () => {
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="rounded-full border-white/15 bg-white/[0.03] hover:bg-white/[0.08]">
+        <Button variant="outline" className="rounded-full border-white/15 glass-soft hover:bg-white/[0.08]">
           <Edit3 className="mr-2 h-4 w-4" /> Edit profile
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto rounded-3xl border-white/10 bg-popover text-white sm:max-w-lg">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto rounded-3xl border-white/10 glass-strong text-white sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="font-display text-2xl">Make it yours</DialogTitle>
           <DialogDescription>Your avatar, handle, and bio are visible on your public profile.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSave} className="space-y-6 pt-2" aria-busy={busy}>
           <fieldset disabled={busy} className="space-y-6 disabled:opacity-70">
-            <div className="flex items-center gap-5 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="flex items-center gap-5 rounded-2xl border border-white/10 glass-soft p-4">
               <button type="button" onClick={() => fileInput.current?.click()} aria-label="Choose profile avatar" className="group relative shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lune-400">
                 <Avatar className="h-20 w-20 ring-2 ring-lune-400/30">
                   <AvatarImage src={draft.avatar} className="object-cover" />
@@ -107,12 +107,12 @@ const ProfileEditor = () => {
             </div>
             <div className="space-y-2">
               <Label htmlFor="profile-username">Username</Label>
-              <Input id="profile-username" value={draft.username} onChange={event => setDraft(previous => ({ ...previous, username: event.target.value }))} required minLength={3} maxLength={64} pattern="[A-Za-z0-9_]{3,64}" aria-describedby="username-help" autoComplete="username" className="h-12 border-white/10 bg-white/[0.03]" />
+              <Input id="profile-username" value={draft.username} onChange={event => setDraft(previous => ({ ...previous, username: event.target.value }))} required minLength={3} maxLength={64} pattern="[A-Za-z0-9_]{3,64}" aria-describedby="username-help" autoComplete="username" className="h-12 border-white/10 glass-soft" />
               <p id="username-help" className="text-xs text-white/40">3–64 letters, numbers, or underscores. Must be unique.</p>
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between"><Label htmlFor="profile-bio">Bio</Label><span className="text-xs tabular-nums text-white/40">{draft.bio.length}/500</span></div>
-              <Textarea id="profile-bio" value={draft.bio} onChange={event => setDraft(previous => ({ ...previous, bio: event.target.value }))} maxLength={500} placeholder="A little about you and what you're here for…" className="min-h-28 resize-none border-white/10 bg-white/[0.03]" />
+              <Textarea id="profile-bio" value={draft.bio} onChange={event => setDraft(previous => ({ ...previous, bio: event.target.value }))} maxLength={500} placeholder="A little about you and what you're here for…" className="min-h-28 resize-none border-white/10 glass-soft" />
             </div>
           </fieldset>
           {error && <p role="alert" className="rounded-xl border border-red-400/20 bg-red-400/10 p-3 text-sm text-red-200">{error}</p>}
