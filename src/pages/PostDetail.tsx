@@ -5,8 +5,8 @@ import Layout from '@/components/lune/Layout';
 import FeedCard from '@/components/lune/FeedCard';
 import { EmptyState } from '@/components/lune/Brand';
 import { Button } from '@/components/ui/button';
-import { postSelect, useSocial, type Post } from '@/context/SocialContext';
-import { supabase } from '@/lib/supabase';
+import { useSocial, type Post } from '@/context/SocialContext';
+import { api, orNull } from '@/lib/api';
 
 const PostView = ({ id }: { id: string }) => {
   const { posts: feedPosts } = useSocial();
@@ -25,9 +25,8 @@ const PostView = ({ id }: { id: string }) => {
           if (active) setPost(null);
           return;
         }
-        const { data, error: queryError } = await supabase.from('posts').select(postSelect).eq('id', id).order('created_at', { referencedTable: 'replies', ascending: true }).maybeSingle();
-        if (queryError) throw queryError;
-        if (active) setPost(data as unknown as Post | null);
+        const data = await orNull(api<Post>(`/api/posts/${id}`));
+        if (active) setPost(data);
       } catch {
         if (active) setError('This post could not be loaded. Check your connection and try again.');
       } finally {

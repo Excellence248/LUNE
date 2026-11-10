@@ -1,21 +1,28 @@
-import { useState } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { Link, Navigate } from 'react-router-dom';
-import { Auth } from '@supabase/auth-ui-react';
-import { ThemeSupa } from '@supabase/auth-ui-shared';
 import { Loader2, Wallet } from 'lucide-react';
 import WalletModal from '@/components/lune/WalletModal';
 import { Button } from '@/components/ui/button';
-import { supabase } from '@/lib/supabaseClient';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useSession } from '@/context/SessionContext';
+import { authErrorMessage } from '@/lib/auth-errors';
 import { postAuthPath } from '@/lib/onboarding';
 
+const fieldClass = 'h-12 rounded-xl border-white/15 bg-white/[0.03] text-white';
+
 const AccountForm = ({ view }: { view: 'sign_in' | 'sign_up' }) => {
-  const { session, user, loading, authError, recoveryMode, refreshProfile, signOut } = useSession();
+  const { session, user, loading, authError, refreshProfile, signIn, signUp, signOut } = useSession();
   const [walletOpen, setWalletOpen] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [confirmSent, setConfirmSent] = useState(false);
   const [signOutError, setSignOutError] = useState('');
+  const pending = useRef(false);
   const signup = view === 'sign_up';
 
-  if (session && recoveryMode) return <Navigate to="/reset-password" replace />;
   if (user && !loading) return <Navigate to={postAuthPath(user)} replace />;
   if (loading) return <div role="status" className="flex items-center justify-center gap-2 py-8 text-white/60"><Loader2 size={18} className="animate-spin" /> Loading your account…</div>;
   if (session) return (
@@ -27,31 +34,49 @@ const AccountForm = ({ view }: { view: 'sign_in' | 'sign_up' }) => {
     </div>
   );
 
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (pending.current) return;
+    pending.current = true;
+    setBusy(true);
+    setError('');
+    try {
+      if (signup) {
+        if (!(await signUp(email, password))) setConfirmSent(true);
+      } else {
+        await signIn(email, password);
+      }
+    } catch (cause) {
+      setError(authErrorMessage(cause));
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
+  };
+
+  if (confirmSent) return (
+    <div className="space-y-4 text-center">
+      <p role="status" className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-4 text-sm leading-relaxed text-emerald-200">Check your inbox to confirm your email, then come back and sign in.</p>
+      <Button asChild className="w-full"><Link to="/signin">Go to sign in</Link></Button>
+    </div>
+  );
+
   return (
     <div className="space-y-5">
-      <Auth
-        key={view}
-        supabaseClient={supabase}
-        view={view}
-        providers={[]}
-        showLinks={false}
-        redirectTo={new URL('/auth/callback', window.location.origin).href}
-        theme="dark"
-        appearance={{
-          theme: ThemeSupa,
-          variables: { default: { colors: { brand: '#a855f7', brandAccent: '#9333ea' } } },
-          style: {
-            input: { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.15)', color: '#fff', borderRadius: '12px', minHeight: '48px' },
-            label: { color: '#cbd5e1' },
-            button: { borderRadius: '12px', minHeight: '48px', fontWeight: 600 },
-          },
-        }}
-        localization={{ variables: {
-          sign_in: { button_label: 'Sign in', email_input_placeholder: 'you@example.com', password_input_placeholder: 'Enter your password' },
-          sign_up: { button_label: 'Create account', email_input_placeholder: 'you@example.com', password_input_placeholder: 'Create a secure password', confirmation_text: 'Check your inbox to confirm your email, then return to sign in.' },
-        } }}
-      />
-      {authError && <p role="alert" className="text-sm text-red-200">{authError}</p>}
+      <form onSubmit={submit} className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="account-email" className="text-slate-300">Email</Label>
+          <Input id="account-email" type="email" autoComplete="email" required placeholder="you@example.com" value={email} disabled={busy} onChange={event => setEmail(event.target.value)} className={fieldClass} />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="account-password" className="text-slate-300">Password</Label>
+          <Input id="account-password" type="password" autoComplete={signup ? 'new-password' : 'current-password'} minLength={signup ? 8 : undefined} required placeholder={signup ? 'Create a secure password' : 'Enter your password'} value={password} disabled={busy} onChange={event => setPassword(event.target.value)} className={fieldClass} />
+        </div>
+        {(error || authError) && <p role="alert" className="text-sm text-red-200">{error || authError}</p>}
+        <Button type="submit" disabled={busy} className="h-12 w-full rounded-xl bg-lune-500 font-semibold hover:bg-lune-600">
+          {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{signup ? 'Create account' : 'Sign in'}
+        </Button>
+      </form>
       {!signup && <div className="text-right"><Link to="/forgot-password" className="text-sm text-lune-300 hover:underline">Forgot password?</Link></div>}
       {signup && <p className="text-xs leading-relaxed text-white/45">We’ll send a confirmation link to your email. Once confirmed, you can set up your profile and start posting.</p>}
       <div className="flex items-center gap-3" aria-hidden="true"><div className="h-px flex-1 bg-white/10" /><span className="text-xs text-white/40">or use a wallet</span><div className="h-px flex-1 bg-white/10" /></div>

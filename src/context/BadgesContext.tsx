@@ -1,8 +1,8 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { api } from '@/lib/api';
 import { FOUNDER_USERNAMES, type BadgeTier } from '@/lib/badges';
 
-interface BadgeRow { tier: BadgeTier; expires_at: string | null; profiles: { username: string } | null; }
+interface BadgeRow { tier: BadgeTier; expires_at: string | null; username: string; }
 
 const BadgesContext = createContext<Map<string, BadgeTier>>(new Map());
 
@@ -13,8 +13,8 @@ export const BadgesProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     let active = true;
     const load = async () => {
-      const { data, error } = await supabase.from('user_badges').select('tier, expires_at, profiles(username)');
-      if (active && !error && data) setRows(data as unknown as BadgeRow[]);
+      const data = await api<BadgeRow[]>('/api/badges').catch(() => null);
+      if (active && data) setRows(data);
     };
     void load();
     const timer = setInterval(load, 5 * 60 * 1000);
@@ -24,7 +24,7 @@ export const BadgesProvider = ({ children }: { children: ReactNode }) => {
   const map = useMemo(() => {
     const m = new Map<string, BadgeTier>();
     for (const r of rows) {
-      const name = r.profiles?.username?.toLowerCase();
+      const name = r.username.toLowerCase();
       if (name && (!r.expires_at || new Date(r.expires_at) > new Date())) m.set(name, r.tier);
     }
     for (const name of FOUNDER_USERNAMES) m.set(name, 'gold');

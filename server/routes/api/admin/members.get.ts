@@ -8,7 +8,7 @@ export default defineHandler(async (event) => {
   await requirePermission(event, 'admin.panel');
   const { offset, q, like } = listParams(event);
   const rows = await sql`
-    select p.id, p.username, p.avatar_url, p.created_at,
+    select p.id, p.username, public.avatar_src(p) as avatar_url, p.created_at,
       to_jsonb(s) - 'profile_id' as stats,
       exists (select 1 from public.profile_roles r where r.profile_id = p.id and r.role = 'admin') as is_admin,
       (select jsonb_build_object('reason', x.reason, 'created_at', x.created_at, 'expires_at', x.expires_at)

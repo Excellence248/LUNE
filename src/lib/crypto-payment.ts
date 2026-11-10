@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabaseClient';
+import { api } from '@/lib/api';
 import { getSolanaWallet, type WalletName } from '@/lib/solana-wallet';
 import type { BadgeTier } from '@/lib/badges';
 
@@ -7,16 +7,7 @@ const RPC_URL = (import.meta.env.VITE_SOLANA_RPC_URL as string | undefined) || '
 interface Order { treasury: string; mint: string; amount: number; decimals: number; }
 export type PaymentStep = 'connecting' | 'preparing' | 'signing' | 'confirming';
 
-const invoke = async <T>(body: object): Promise<T> => {
-  const { data, error } = await supabase.functions.invoke('crypto-payments', { body });
-  if (error) {
-    // Edge-function errors carry a JSON body with a readable message.
-    let message = 'Payment service unavailable. Please try again.';
-    try { const detail = await (error as { context?: Response }).context?.json(); if (detail?.error) message = detail.error; } catch { /* keep default */ }
-    throw new Error(message);
-  }
-  return data as T;
-};
+const invoke = <T>(body: object): Promise<T> => api<T>('/api/payments', { method: 'POST', body });
 
 /** Pays for a badge in USDC from the user's Phantom/Solflare wallet, then waits for on-chain confirmation. */
 export const payWithUsdc = async (tier: BadgeTier, walletName: WalletName, onStep: (step: PaymentStep) => void) => {

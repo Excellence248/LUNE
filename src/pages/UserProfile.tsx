@@ -13,7 +13,7 @@ import { showError } from '@/utils/toast';
 
 const PublicProfileView = ({ username }: { username: string }) => {
   const { user: currentUser } = useWallet();
-  const { isFollowing, followUser, unfollowUser, getProfileByUsername, followingLoading, followingError, refreshFollowing } = useSocial();
+  const { posts, isFollowing, followUser, unfollowUser, getProfileByUsername, followingLoading, followingError, refreshFollowing } = useSocial();
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -40,6 +40,13 @@ const PublicProfileView = ({ username }: { username: string }) => {
     return () => { active = false; };
   }, [username, getProfileByUsername, retry]);
 
+  // Likes, reposts and posts change the counts; the feed refreshes after each, so follow it quietly.
+  useEffect(() => {
+    let active = true;
+    getProfileByUsername(username).then(data => { if (active && data) setProfile(data); }).catch(() => undefined);
+    return () => { active = false; };
+  }, [posts, username, getProfileByUsername]);
+
   const handleFollow = async () => {
     if (!profile || !currentUser || busy.current || followingLoading || followingError) return;
     const following = isFollowing(profile.id);
@@ -48,6 +55,9 @@ const PublicProfileView = ({ username }: { username: string }) => {
     try {
       if (following) await unfollowUser(profile.id);
       else await followUser(profile.id);
+      // Refresh the follower count without showing the loading state again.
+      const updated = await getProfileByUsername(profile.username).catch(() => null);
+      if (updated) setProfile(updated);
     } catch {
       showError(`Could not ${following ? 'unfollow' : 'follow'} this account. Check your login session and connection, then try again.`);
     } finally {
@@ -85,6 +95,8 @@ const PublicProfileView = ({ username }: { username: string }) => {
         handle={profile.username}
         avatarUrl={profile.avatar_url}
         bio={profile.bio}
+        stats={profile.stats}
+        footnote={profile.suspended ? 'This account is suspended.' : undefined}
         actions={isMe ? (
           <Button asChild variant="outline" className="rounded-full border-white/15 bg-transparent"><Link to="/profile">Edit profile</Link></Button>
         ) : (

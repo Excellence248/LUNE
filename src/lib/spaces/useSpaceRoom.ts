@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { RealtimeChannel } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabaseClient';
+import { api } from '@/lib/api';
+import { createSpaceTransport, type SpaceMessage, type SpaceTransport } from '@/lib/spaces/transport';
 
 /*
  * Audio spaces without a media server: WebRTC peer connections between participants,
- * signalled over Supabase Realtime (broadcast + presence). Speakers/host send mic audio;
+ * signalled through the server by polling (see transport.ts). Speakers/host send mic audio;
  * listeners only receive. Rooms are ephemeral – a space is "live" while its host is present.
  *
  * Scale note: this is a mesh (every speaker <-> every participant), good for ~8 speakers and
@@ -14,7 +14,6 @@ import { supabase } from '@/lib/supabaseClient';
 export type SpaceRole = 'host' | 'speaker' | 'listener';
 export interface SpaceMember { id: string; name: string; avatar: string; role: SpaceRole; hand: boolean; muted: boolean; title?: string; }
 export type SpaceStatus = 'connecting' | 'live' | 'ended' | 'error';
-export const LOBBY_TOPIC = 'lune-spaces-lobby';
 export interface LobbySpace { id: string; title: string; hostName: string; hostAvatar: string; startedAt: number; listeners: number; }
 
 const iceServers: RTCIceServer[] = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
@@ -48,8 +47,7 @@ export const useSpaceRoom = (spaceId: string, me: Me | null, { host, title = '' 
     let closed = false;
     const startedAt = Date.now();
     const peers = new Map<string, Peer>();
-    let channel: RealtimeChannel | undefined;
-    let lobby: RealtimeChannel | undefined;
+    let transport: SpaceTransport | undefined;
     let mic: MediaStream | null = null;
     let myRole: SpaceRole = host ? 'host' : 'listener';
     let myMuted = false, myHand = false, current: SpaceMember[] = [];
@@ -61,8 +59,8 @@ export const useSpaceRoom = (spaceId: string, me: Me | null, { host, title = '' 
     const canSend = () => myRole !== 'listener';
     const meta = (): SpaceMember => ({ id: meId, name: meName || 'Guest', avatar: meAvatar || '', role: myRole, hand: myHand, muted: myMuted, title: host ? title : undefined });
     const lobbyMeta = (): LobbySpace => ({ id: spaceId, title, hostName: meName || 'Host', hostAvatar: meAvatar || '', startedAt, listeners: Math.max(0, current.length - 1) });
-    const publish = () => { if (!closed && channel) void channel.track(meta()); };
-    const sendSignal = (to: string, data: object) => { void channel?.send({ type: 'broadcast', event: 'signal', payload: { from: meId, to, ...data } }); };
+    const publish = () => { if (!closed) transport?.track(meta()); };
+    const sendSignal = (to: string, data: object) => { transport?.send('signal', data, to); };
 
     const watch = (id: string, stream: MediaStream) => {
       try {
@@ -146,17 +144,14 @@ export const useSpaceRoom = (spaceId: string, me: Me | null, { host, title = '' 
       setSpeaking(prev => (prev.length === active.length && prev.every(x => active.includes(x)) ? prev : active));
     }, 200);
 
-    let lobbyTimer: ReturnType<typeof setInterval> | undefined;
     const teardown = () => {
       closed = true;
       if (endTimer) clearTimeout(endTimer);
-      clearInterval(meter); clearInterval(lobbyTimer);
+      clearInterval(meter);
       [...peers.keys()].forEach(closePeer);
       releaseMic();
       void ctx?.close();
-      if (lobby) void supabase.removeChannel(lobby);
-      const ch = channel;
-      if (ch) void ch.untrack().finally(() => supabase.removeChannel(ch));
+      transport?.close();
     };
     const endRoom = (message?: string) => {
       if (closed) return;
@@ -165,9 +160,8 @@ export const useSpaceRoom = (spaceId: string, me: Me | null, { host, title = '' 
       setStatus('ended');
     };
 
-    const onSync = () => {
-      if (!channel) return;
-      current = Object.values(channel.presenceState<SpaceMember>()).map(metas => metas[metas.length - 1]).filter(Boolean);
+    const onSync = (members: SpaceMember[]) => {
+      current = members;
       setMembers(current);
       const h = current.find(m => m.role === 'host');
       if (h) {
@@ -234,7 +228,7 @@ export const useSpaceRoom = (spaceId: string, me: Me | null, { host, title = '' 
       raiseHand: () => { if (myRole !== 'listener') return; myHand = !myHand; setHand(myHand); publish(); },
       control: (type, to) => {
         if (myRole !== 'host') return;
-        void channel?.send({ type: 'broadcast', event: 'control', payload: { from: meId, type, to } });
+        transport?.send('control', { type }, to);
         if (type === 'end') setTimeout(() => endRoom(), 300); // let the broadcast leave first
       },
       leave: () => endRoom(),
@@ -244,26 +238,20 @@ export const useSpaceRoom = (spaceId: string, me: Me | null, { host, title = '' 
     (async () => {
       if (host && !(await acquireMic())) { if (!closed) setStatus('error'); return; }
       if (closed) { releaseMic(); return; }
-      const ch = supabase.channel(`space:${spaceId}`, { config: { presence: { key: meId }, broadcast: { self: false } } });
-      channel = ch;
-      ch.on('presence', { event: 'sync' }, onSync)
-        .on('broadcast', { event: 'signal' }, ({ payload }) => handleSignal(payload))
-        .on('broadcast', { event: 'control' }, ({ payload }) => void handleControl(payload))
-        .subscribe(s => {
-          if (s === 'SUBSCRIBED') {
-            publish();
-            if (!host) endTimer = setTimeout(() => { if (!hostSeen) endRoom('This space is not live right now.'); }, 7000);
-          } else if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT') {
-            setError('Could not connect to the audio service. Check your connection.'); setStatus('error');
-          }
-        });
-      if (host) {
-        const l = supabase.channel(LOBBY_TOPIC, { config: { presence: { key: spaceId } } });
-        lobby = l;
-        l.subscribe(s => { if (s === 'SUBSCRIBED') void l.track(lobbyMeta()); });
-        // keep the public listing's listener count fresh
-        lobbyTimer = setInterval(() => { if (!closed) void l.track(lobbyMeta()); }, 10000);
-      }
+      const onMessage = ({ from, to, event, payload }: SpaceMessage) => {
+        if (event === 'signal') handleSignal({ ...payload, from, to: to ?? meId });
+        else void handleControl({ from, type: String(payload.type), to: to ?? undefined });
+      };
+      transport = createSpaceTransport<SpaceMember>(spaceId, {
+        lobby: host ? lobbyMeta : undefined,
+        onMembers: onSync,
+        onMessage,
+        onReady: () => {
+          if (!host) endTimer = setTimeout(() => { if (!hostSeen) endRoom('This space is not live right now.'); }, 7000);
+        },
+        onError: message => { if (!closed) { setError(message); setStatus('error'); } },
+      });
+      publish();
     })();
 
     return () => { if (!closed) teardown(); api.current = undefined; };
@@ -282,17 +270,19 @@ export const useSpaceRoom = (spaceId: string, me: Me | null, { host, title = '' 
   };
 };
 
-/** Live spaces, discovered through presence on a shared lobby channel. */
+/** Live spaces: those whose host is still polling. Refreshed every few seconds. */
 export const useSpacesLobby = () => {
   const [spaces, setSpaces] = useState<LobbySpace[]>([]);
   const [connected, setConnected] = useState(false);
   useEffect(() => {
-    const channel = supabase.channel(LOBBY_TOPIC);
-    channel.on('presence', { event: 'sync' }, () => {
-      const list = Object.values(channel.presenceState<LobbySpace>()).map(m => m[m.length - 1]).filter(Boolean);
-      setSpaces(list.sort((a, b) => b.startedAt - a.startedAt));
-    }).subscribe(s => setConnected(s === 'SUBSCRIBED'));
-    return () => { void supabase.removeChannel(channel); };
+    let active = true;
+    const load = () => api<LobbySpace[]>('/api/spaces').then(
+      list => { if (active) { setSpaces(list.sort((a, b) => b.startedAt - a.startedAt)); setConnected(true); } },
+      () => { if (active) setConnected(false); },
+    );
+    void load();
+    const timer = setInterval(load, 5000);
+    return () => { active = false; clearInterval(timer); };
   }, []);
   return { spaces, connected };
 };

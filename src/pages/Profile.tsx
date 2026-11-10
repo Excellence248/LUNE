@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowUpRight, Loader2, UserRound, Wallet } from 'lucide-react';
 import Layout from '@/components/lune/Layout';
@@ -8,9 +9,21 @@ import { EmptyState } from '@/components/lune/Brand';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useWallet } from '@/context/WalletContext';
+import { useSocial, type ProfileStats } from '@/context/SocialContext';
 
 const Profile = () => {
   const { user, loading, authError, refreshProfile } = useWallet();
+  const { getProfileByUsername, followingCount, posts } = useSocial();
+  const [stats, setStats] = useState<ProfileStats | null>(null);
+  const username = user?.username;
+
+  // Counts come from the public profile; refresh them when you follow someone or the feed changes.
+  useEffect(() => {
+    if (!username) return;
+    let active = true;
+    getProfileByUsername(username).then(profile => { if (active) setStats(profile?.stats ?? null); }).catch(() => undefined);
+    return () => { active = false; };
+  }, [username, followingCount, posts, getProfileByUsername]);
 
   if (loading) {
     return <Layout><div role="status" className="flex items-center justify-center gap-3 py-20 text-white/50"><Loader2 className="h-5 w-5 animate-spin" /> Loading your profile…</div></Layout>;
@@ -42,7 +55,7 @@ const Profile = () => {
         </header>
 
         <div className="overflow-hidden rounded-3xl border border-white/10 glass-soft pb-7">
-          <ProfileHero name={user.username} handle={user.username} avatarUrl={user.avatar} bio={user.bio} actions={<ProfileEditor key={user.id} />} />
+          <ProfileHero name={user.username} handle={user.username} avatarUrl={user.avatar} bio={user.bio} stats={stats} actions={<ProfileEditor key={user.id} />} />
         </div>
 
         <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_260px]">

@@ -78,7 +78,7 @@ const SignIn = ({ onSignedIn }: { onSignedIn: () => void }) => {
       <button type="button" className="mt-4 text-sm text-lune-300 hover:underline" onClick={() => { setCreating(!creating); setError(''); }}>
         {creating ? 'I already have a sign-in' : 'First time? Create your sign-in'}
       </button>
-      <p className="mt-3 text-xs leading-relaxed text-muted-foreground">Only Lune admins can use this panel. A new sign-in has no access until it is linked to an admin profile.</p>
+      <p className="mt-3 text-xs leading-relaxed text-muted-foreground">Only Lune admins can use this panel. Sign in with the email you use on Lune; signing up with the email from your old account brings back your profile once the email is confirmed.</p>
     </Screen>
   );
 };
@@ -104,7 +104,11 @@ const AdminApp = () => {
   }, [load]);
 
   const signOut = async () => {
-    await api('/api/auth/sign-out', { method: 'POST', body: {} }).catch(() => undefined);
+    // Ends both kinds of session: Neon Auth (email) and the wallet cookie.
+    await Promise.all([
+      api('/api/auth/sign-out', { method: 'POST', body: {} }).catch(() => undefined),
+      api('/api/session/sign-out', { method: 'POST', body: {} }).catch(() => undefined),
+    ]);
     setState({ status: 'signed-out' });
   };
 

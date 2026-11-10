@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useWallet } from '@/context/WalletContext';
 import { useSocial, type PublicProfile } from '@/context/SocialContext';
 import type { AccountUser } from '@/context/SessionContext';
-import { supabase } from '@/lib/supabase';
+import { api, orNull } from '@/lib/api';
 import { MOON_AVATARS } from '@/lib/moon-avatars';
 import { INTERESTS, getInterests, hasDefaultUsername, isGeneratedUsername, markOnboardingDone, markPostedFirst, setInterests as saveInterests } from '@/lib/onboarding';
 import { showError } from '@/utils/toast';
@@ -71,16 +71,17 @@ const WelcomeFlow = ({ user }: { user: AccountUser }) => {
     setAvailability('checking');
     let active = true;
     const timer = setTimeout(async () => {
-      const { data, error: lookupError } = await supabase.from('profiles').select('id').eq('username', name).maybeSingle();
-      if (active) setAvailability(lookupError ? 'unknown' : data ? 'taken' : 'available');
+      // Usernames are unique regardless of case, and so is this lookup.
+      const found = await orNull(api<PublicProfile>(`/api/profiles/${encodeURIComponent(name)}`)).catch(() => undefined);
+      if (active) setAvailability(found === undefined ? 'unknown' : found && found.id !== user.id ? 'taken' : 'available');
     }, 400);
     return () => { active = false; clearTimeout(timer); };
-  }, [username, user.username]);
+  }, [username, user.username, user.id]);
 
   useEffect(() => {
     if (step !== 2 || people) return;
     let active = true;
-    supabase.from('profiles').select('id, username, avatar_url, bio, wallet_address').neq('id', user.id).limit(40).then(({ data, error: loadError }) => {
+    api<PublicProfile[]>('/api/profiles?limit=40').then(data => ({ data, loadError: false }), () => ({ data: [] as PublicProfile[], loadError: true })).then(({ data, loadError }) => {
       if (!active) return;
       if (loadError) { setPeopleError(true); setPeople([]); return; }
       const wanted = interests.map(item => item.toLowerCase());

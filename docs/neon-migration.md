@@ -1,129 +1,79 @@
-# Neon database and migration requirements
+# Lune on Neon
 
-## Current implementation status
+Supabase has been removed. The app, its data, its sign-in and its payments run on Neon plus this
+site's own server routes (Nitro, deployed to Vercel). The browser only ever calls this site's `/api`.
 
-- The app has a server-only Neon client in `server/utils/db.ts` and a read-only `/api/database-health` route.
-- `vite.config.ts` sets Nitro's `serverDir` to `./server`. Nitro 3 defaults it to `false`, which previously left every `server/routes` handler out of dev and the Vercel build (`/api/database-health` returned the SPA page).
-- Application authentication, profiles, social queries, storage, and payment functions still use Supabase.
-- The database connection works: `DATABASE_URL` reaches Postgres 18, and `/api/database-health` reports `connected` in dev. Neon Auth's `neon_auth` schema is provisioned with no users.
-- `neon/migrations/20261110_initial_schema.sql` was **applied on 2026-11-10**. All 11 tables below exist and are empty. Constraint, notification-trigger, index and cascade tests passed against the live tables inside a rolled-back transaction.
-- No Supabase export or media backup has been supplied. Do not remove Supabase data or switch existing members to an empty database.
+## Status (2026-11-10)
 
-- `neon/migrations/20261110_profile_stats_and_roles.sql` was **applied on 2026-11-10**: the `profile_stats` view, roles and permissions, suspensions and the admin audit log. Its tests passed against the live tables inside a rolled-back transaction.
+- **Schema:** every file in `neon/migrations/` has been applied, in this order: `initial_schema`, `profile_stats_and_roles`, `app_cutover`, `api_functions`, `legacy_rows`. Each was tested against the live database inside a rolled-back transaction first. Add changes as new files; never edit an applied one.
+- **Data copied from Supabase:** everything the public key could read: 2 profiles, 5 posts, 5 likes, 1 repost, 2 follows (and 0 replies). Row counts matched. The usernames `Sammy🐳` and `Excellence@248` became `Sammy` and `Excellence_248`, because Neon allows only letters, numbers and underscores. Profile IDs are unchanged.
+- **Not yet copied:** rows the public key cannot see: notifications, crypto orders, the unused `messages` table, and the account emails in Supabase Auth. Run the importer below to copy them. Passwords cannot be moved, so everyone sets a new one.
+- **Code:** `@supabase/*` packages, the Supabase client, the `supabase/` folder (migrations and the `crypto-payments` edge function, now `/api/payments`) and the `VITE_SUPABASE_*` variables are gone.
 
-Make further schema changes as new files in `neon/migrations/`. Usernames are unique case-insensitively (`lower(username)`); resolve legacy case-duplicates before import.
+## Copying the rest of Supabase
 
-**Legacy usernames that will not import as-is:** the two current Supabase profiles are `Sammy🐳` and `Excellence@248`. Both break the `^[A-Za-z0-9_]{3,64}$` rule that the app's own profile editor already enforces. Rename them (for example `Sammy` and `Excellence_248`) during import; their profile IDs, and so their admin role, stay the same.
+1. In Supabase: **Connect → Connection string → Session pooler**. Copy the URI and fill in the database password.
+2. Add it to `.env.local` on its own line: `SUPABASE_DB_URL="postgresql://…"`. Never commit it or paste it into chat.
+3. Run a dry run, which only reads: `node scripts/import-supabase.mjs`
+4. Copy: `node scripts/import-supabase.mjs --apply`
+
+The importer only reads Supabase and writes Neon in one transaction. Re-running is safe: rows already in Neon are skipped. Rows Neon's rules reject (a self-follow, an unknown notification type) and tables with no Neon equivalent (`messages`) go into the private `legacy_rows` table, so nothing is lost. From `auth.users` it copies only the ID, email and dates, never password hashes. It was tested end to end against a Supabase-shaped copy; it has not yet run against the real Supabase.
+
+Once it has run, each member's old email is stored privately with their profile. **Signing up with the same email and confirming it brings back their old profile**: username, posts, followers and, for the two founders, the admin role.
+
+## Deploying on Vercel
+
+Set these server-only environment variables in the Vercel project, then remove the old `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`:
+
+| Variable | Needed for |
+| --- | --- |
+| `DATABASE_URL` | Everything (Neon connection string) |
+| `NEON_AUTH_BASE_URL` | Email sign-in (from the Neon Console, Auth) |
+| `SESSION_SECRET` | Optional. Signs wallet sessions; defaults to a key derived from `DATABASE_URL`, so changing the database password signs wallet users out |
+| `TREASURY_ADDRESS` | Selling Lune Blue/Gold. Without it `/api/payments` answers "not configured" |
+| `SOLANA_RPC_URL`, `USDC_MINT` | Optional payment overrides (default: public mainnet RPC, mainnet USDC) |
+
+In the Neon Console, under Auth, add the site's domains as trusted domains. Confirmation and password-reset emails redirect back to `/auth/callback` and `/reset-password` on this site, and Neon Auth may refuse addresses it doesn't trust.
+
+## How it fits together
+
+- **Sign-in.** Email accounts are Neon Auth, reached through the same-origin proxy at `/api/auth/*`, so the session cookie is first-party. Wallet sign-in: the wallet signs a one-time message from `/api/wallet/nonce` (no transaction, no funds), `/api/wallet/verify` checks the ed25519 signature and sets an HMAC-signed httpOnly cookie, and used nonces are stored so a signature cannot be replayed. `server/utils/auth.ts` resolves either kind of session into a profile, creating it on first sign-in.
+- **Data.** `/api/posts`, `/api/profiles`, `/api/follows`, `/api/notifications`, `/api/me` and friends. Posts are returned in the shape the UI already used (`post_json`), with likes, reposts and replies embedded. Writes check a permission (`post.create`, `post.react`, `reply.create`, `profile.follow`, `profile.edit_own`) with `has_permission`.
+- **Live updates.** Neon has no change stream, so the feed polls every 15 seconds and notifications every 20.
+- **Images.** Uploads go to the `media` table (JPG/PNG/WebP/GIF, checked by content, max 4 MB because Vercel caps request bodies at 4.5 MB) and are served from `/api/media/:id`. Inline avatars from Supabase are served from `/api/avatars/:id` so feeds stay small. Both are cached forever and served with a sandboxing CSP.
+- **Spaces.** WebRTC audio is unchanged, but connection messages travel through `/api/spaces/:id/poll` and `/send` about once a second instead of Supabase Realtime. The server stamps who sent each message and allows one host per space, so neither can be faked.
+- **Payments.** `/api/payments` checks the transaction on-chain, then `confirm_crypto_order` marks the order paid and extends the badge in one transaction. A transaction signature can pay for only one order.
+- **Notifications** are created by database triggers on likes, reposts, replies and follows, and never for your own activity.
 
 ## Profile stats
 
-`profile_stats` computes each profile's followers, following, posts, replies, reposts, likes given, likes received and reposts received from the source tables, so the counts never drift. `GET /api/profiles/:username` returns the public profile with these counts, its active badge and whether it is suspended. Guests can read it. It is not wired into the React profile pages yet, because those still read Supabase.
+`profile_stats` computes followers, following, posts, replies, reposts, likes given, likes received and reposts received from the source tables, so they never drift. `GET /api/profiles/:username` returns them, and both profile pages show Following, Followers, Posts, Likes and Reposts.
 
 ## Roles and the admin panel
 
 - **Members** (every profile) may edit their own profile, post, reply, like, repost, follow, and delete their own posts and replies.
-- **Admins** additionally open the admin panel, remove any post or reply, suspend and reinstate members, grant and revoke badges, and read the audit log.
+- **Admins** also get the admin panel at `/admin`: remove any post or reply, suspend and reinstate members, grant and revoke badges, and read the audit log.
 - A suspended member can still sign in and read but loses every permission. Database triggers also block their posts, replies, likes, reposts and follows. Admins cannot be suspended.
-- Roles live in `profile_roles` and change only through SQL run by the database owner; no API or panel screen grants them. The two founding admins are `role_bootstrap` entries keyed by their Supabase profile IDs (`2b4a3834…` Excellence@248, `cfaa2613…` Sammy). They become admins automatically when those profile rows are imported.
+- Roles live in `profile_roles` and change only through SQL run by the database owner; no API or screen grants them. The two founding admins are `Excellence_248` and `Sammy`, keyed by their profile IDs.
 - Every admin action goes through an `admin_*` SQL function that re-checks the permission and writes `admin_actions`, an append-only audit log. Removed posts and replies are copied into it.
-- Server routes check access with `requirePermission(event, '<permission>')` in `server/utils/auth.ts`. It verifies the Neon Auth session with Neon Auth itself, then resolves the profile through `profile_accounts`.
+- The panel is a separate React tree in its own chunk (`src/admin/`), loaded only on `/admin`.
 
-The admin panel is at `/admin`. It is a separate React tree in its own chunk (`src/admin/`), loaded only on that path. Neon Auth requests go through the same-origin proxy at `/api/auth/*`.
+**Getting into the admin panel:** after running the importer, open `/admin`, choose **First time? Create your sign-in** with the same email as your old Supabase account, confirm the email, and sign in. Your old profile, with its admin role, comes back automatically. If you can't use the old email, link a new sign-in by hand in the Neon SQL editor. This deletes the empty profile the new sign-in created:
 
-### Setting up the two admins
+```sql
+begin;
+delete from public.profiles p using public.profile_accounts a, neon_auth."user" u
+  where a.profile_id = p.id and a.neon_auth_user_id = u.id and lower(u.email) = lower('<new email>')
+    and p.id <> '2b4a3834-f524-4458-9066-500d638069de';
+update public.profile_accounts set neon_auth_user_id = (select id from neon_auth."user" where lower(email) = lower('<new email>'))
+  where profile_id = '2b4a3834-f524-4458-9066-500d638069de';
+commit;
+```
 
-1. Import the Supabase profiles into Neon (renaming the two usernames above). Both founders get the admin role automatically.
-2. Each admin opens `/admin`, chooses **First time? Create your sign-in**, and signs in. The panel then says the sign-in is not linked and shows its Neon Auth user ID.
-3. The database owner links each one in the Neon SQL editor:
+(Use `cfaa2613-87d9-4327-aee5-71720ca9e138` for Sammy.)
 
-   ```sql
-   insert into public.profile_accounts (profile_id, neon_auth_user_id)
-   values ('2b4a3834-f524-4458-9066-500d638069de', '<Excellence''s Neon Auth user ID>'),
-          ('cfaa2613-87d9-4327-aee5-71720ca9e138', '<Sammy''s Neon Auth user ID>')
-   on conflict (profile_id) do update set neon_auth_user_id = excluded.neon_auth_user_id;
-   ```
+## Verified, and not yet verified
 
-4. If Neon Auth rejects sign-in from the deployed domain, add that domain to Neon Auth's trusted domains in the Neon Console.
+Verified against the live database, the dev server and the production build: every migration's constraints and triggers; every API route, including wallet sign-in with a real ed25519 signature, rejection of bad and replayed signatures, posting with an uploaded image, likes, reposts, replies, follows, notifications, profile edits, Spaces hosting and messages, and sign-out; and in the browser, the feed, onboarding, follow, like, both profile pages with stats, and the admin panel turning away a non-admin. All test accounts and rows were deleted afterwards.
 
-Not yet verified end to end: a real Neon Auth sign-in through the proxy (it needs a real account), and email-verification settings. The panel UI was checked with mocked API responses, and every query the admin routes run was checked against the live schema.
-
-## Required tables and constraints
-
-| Table | Required data and integrity |
-| --- | --- |
-| `profiles` | UUID primary key compatible with existing IDs; unique username; 3–64 letters/numbers/underscores; bio up to 500 characters; avatar URL or existing avatar data; nullable unique Solana wallet address; creation/update timestamps. No email in public profile responses. |
-| `profile_accounts` | Private mapping between a profile UUID, verified Neon Auth user ID, and legacy Supabase user ID. Each identity must map to only one profile. Establish links using verified account ownership, never client-supplied IDs or matching email alone. |
-| `profile_preferences` | One row per profile; interests; onboarding completion and checklist state. The current app stores these in browser local storage; they must be connected to authenticated server APIs during cutover. |
-| `posts` | UUID primary key; author foreign key; content up to 2,000 characters; optional image URL; nonempty content or image; creation timestamp. Preserve any legacy repost columns found in the export. |
-| `replies` | UUID primary key; post/author foreign keys; nonempty content up to 1,000 characters; creation timestamp. |
-| `likes` | Post/profile foreign keys; unique pair so a member can like a post only once; creation timestamp. |
-| `reposts` | Post/profile foreign keys; unique pair so a member can repost a post only once; creation timestamp. |
-| `follows` | Follower/following foreign keys; unique pair; prohibit following oneself; creation timestamp. |
-| `notifications` | UUID primary key; recipient/actor foreign keys; type limited to like/repost/reply/follow; appropriate post reference; read flag; creation timestamp. Suppress self-notifications and generate events server-side. |
-| `user_badges` | One row per profile; blue/gold tier; nullable expiry for non-expiring grants; granted timestamp. Only trusted server code may grant badges. |
-| `crypto_orders` | Unique Solana payment reference; profile foreign key; blue/gold tier; positive exact numeric USDC amount; pending/paid state; unique transaction signature; creation/payment timestamps. Paid state requires a verified signature and paid timestamp. |
-
-Use stable UUIDs and an explicit account mapping so imported social/payment foreign keys remain intact. Resolve legacy duplicate or invalid values before adding stricter constraints; do not silently rewrite or discard accounts.
-
-### Query indexes
-
-- Feed: posts `(created_at DESC, id DESC)`.
-- Profile activity: posts `(user_id, created_at DESC, id DESC)`.
-- Replies: `(post_id, created_at, id)` and author foreign key.
-- Likes/reposts: unique `(post_id, user_id)` plus indexes beginning with `user_id` for member activity.
-- Follows: unique `(follower_id, following_id)` plus reverse following index.
-- Notifications: `(user_id, created_at DESC, id DESC)` and partial unread index for `read = false`.
-- Orders: `(user_id, created_at DESC)` and pending-order reconciliation index.
-- Usernames: enforce uniqueness with a policy consistent with legacy data and the public lookup API. Decide case sensitivity explicitly before import.
-
-## Authorization and auth
-
-The app uses a plain server-side `DATABASE_URL`. That connection does not carry a member's JWT identity. Do not rely on `auth.user_id()` RLS for this connection.
-
-Before exposing any data API:
-
-1. Integrate managed Neon Auth using the same-origin server proxy and verified server sessions.
-2. Resolve the session's auth identity to its profile through the private account mapping.
-3. Enforce ownership and recipient filtering in server code and SQL for every write and private read.
-4. Return only public profile fields to guests. Keep identity mappings, preferences, notification inboxes, and order details private.
-5. Keep SQL credentials server-only and use parameterized queries.
-6. Verify Neon Auth's supported Solana wallet sign-in or account-linking capabilities. Do not replace the existing wallet flow with homegrown authentication.
-7. Verify email verification, callback, and password recovery configuration and test them before switching sign-in pages.
-
-## Supabase backup and import
-
-Required secure source material:
-
-- Database schema including constraints, indexes, functions, and triggers.
-- Rows for profiles, posts, replies, likes, reposts, follows, notifications, badges, and crypto orders.
-- Auth account export and provider/identity information through an authorized migration path.
-- Storage inventory and actual avatar/feed-media files, including object paths and content types.
-
-Do not paste passwords, service-role keys, password hashes, or sensitive account exports into chat. Use an authorized integration or secure transfer. The app's public Supabase key cannot provide a complete backup of private tables, Auth users, or storage.
-
-Import parents before children, preserve IDs, compare source and destination row counts, and check orphaned foreign keys. Confirm the actual exported schema before making irreversible assumptions about legacy records.
-
-## Application cutover requirements
-
-- Connect SessionContext, profile creation, profile editing, welcome username availability, interests, and onboarding persistence to authenticated Neon server APIs.
-- Replace Supabase social queries, notification queries, public profile reads, search, and profile activity with matching APIs. Preserve guest reads and owner-only writes.
-- Replace Supabase Realtime with a supported live-update mechanism or deliberate polling; do not display a live status for a disconnected stream.
-- Select media/object storage, migrate files, and enforce upload ownership, image type, and size limits. Neon database tables are not a substitute for object storage.
-- Move payment functions server-side, verify the treasury/mint/network/amount/reference and successful chain transaction, and atomically claim the signature, mark the order paid, and grant the badge. Repeated confirmations must not extend a subscription repeatedly. Configure treasury and RPC credentials server-side.
-- Add reconciliation for sent payments that are not confirmed before the browser closes.
-- Validate sign-up, sign-in, verification, recovery, profile ownership, guest reads, posting, uploads, reactions, follows, notifications, and duplicate-payment handling.
-- Maintain a rollback path and retain the Supabase source until the migrated data and application have been verified.
-
-## Live database verification
-
-Done on 2026-11-10, against the live tables in a rolled-back transaction:
-
-- Every table, constraint, index, trigger and function was inspected with live schema queries.
-- Duplicate usernames (any case), wallets, reactions, follows and identity links; self-follows; self-notifications; oversized or empty text; invalid payment states; and reused transaction signatures are all rejected.
-- Notification triggers fire for likes, reposts, replies and follows, skip self-activity, and stay off while `lune.importing` is `on`.
-- The feed, inbox and unread-count queries use their indexes, and deleting a profile cascades its activity.
-
-Still required:
-
-- Owner and recipient filters in the server APIs, once they exist.
-- Orphaned-reference checks, source-to-destination row counts, and media availability after import.
+Not yet verified: a real Neon Auth email sign-up, sign-in, confirmation email and password reset (they need a real inbox), a real browser wallet extension, two people talking in a Space, a real USDC payment, and the importer against the real Supabase.

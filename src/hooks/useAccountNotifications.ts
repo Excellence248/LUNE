@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { api } from '@/lib/api';
 import type { Notification } from '@/context/SocialContext';
 
 export const useAccountNotifications = (userId: string | undefined) => {
@@ -25,17 +25,13 @@ export const useAccountNotifications = (userId: string | undefined) => {
     const limit = visibleCount.current;
     setLoading(true);
     try {
-      const [rows, count] = await Promise.all([
-        supabase.from('notifications').select('*, actor_profile:actor_id(username, avatar_url)').eq('user_id', userId).order('created_at', { ascending: false }).order('id', { ascending: false }).limit(limit + 1),
-        supabase.from('notifications').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('read', false),
-      ]);
-      if (rows.error || count.error) throw rows.error || count.error;
+      const data = await api<{ items: Notification[]; hasMore: boolean; unread: number }>(`/api/notifications?limit=${limit}`);
       if (currentUser.current !== userId || request !== requestNumber.current) return;
       loadedCount.current = limit;
-      setNotifications((rows.data || []).slice(0, limit) as unknown as Notification[]);
-      setUnreadCount(count.count || 0);
+      setNotifications(data.items);
+      setUnreadCount(data.unread);
       setOwnerId(userId);
-      setHasMore((rows.data?.length || 0) > limit);
+      setHasMore(data.hasMore);
       setError(null);
     } catch {
       if (currentUser.current === userId && request === requestNumber.current) setError('Notifications could not be refreshed. Please retry.');
@@ -59,18 +55,13 @@ export const useAccountNotifications = (userId: string | undefined) => {
     setLoading(false);
     if (!userId) return;
     void refresh();
-    let debounce: ReturnType<typeof setTimeout>;
-    const refetch = () => { clearTimeout(debounce); debounce = setTimeout(refresh, 150); };
-    const channel = supabase.channel(`notifications:${userId}`).on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` }, refetch).subscribe(status => { if (status === 'SUBSCRIBED') refetch(); });
-    const interval = setInterval(refresh, 30000);
+    const interval = setInterval(refresh, 20000);
     const onVisible = () => { if (document.visibilityState === 'visible') void refresh(); };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
       requestNumber.current += 1;
-      clearTimeout(debounce);
       clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisible);
-      void supabase.removeChannel(channel);
     };
   }, [userId, refresh]);
 
@@ -90,13 +81,11 @@ export const useAccountNotifications = (userId: string | undefined) => {
     markingUsers.current.add(userId);
     setMarkingOwner(userId);
     try {
-      let query = supabase.from('notifications').update({ read: true }).eq('user_id', userId).eq('read', false);
-      if (ids) query = query.in('id', ids);
-      const { data, error: updateError } = await query.select('id');
-      if (updateError) throw new Error('Notifications could not be marked read. Check your connection and retry.');
+      const data = await api<string[]>('/api/notifications/read', { method: 'POST', body: ids ? { ids } : {} })
+        .catch(() => { throw new Error('Notifications could not be marked read. Check your connection and retry.'); });
       if (currentUser.current !== userId) return;
       requestNumber.current += 1;
-      const updated = new Set((data || []).map(row => row.id));
+      const updated = new Set(data);
       setNotifications(previous => previous.map(row => updated.has(row.id) ? { ...row, read: true } : row));
       setUnreadCount(previous => Math.max(0, previous - updated.size));
       await refresh();

@@ -1,6 +1,16 @@
 import VerifiedBadge from '@/components/lune/VerifiedBadge';
 import React from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import type { ProfileStats } from '@/context/SocialContext';
+
+const STATS: { key: keyof ProfileStats; label: string; title?: string }[] = [
+  { key: 'following', label: 'Following' },
+  { key: 'followers', label: 'Followers' },
+  { key: 'posts', label: 'Posts' },
+  { key: 'likes_received', label: 'Likes', title: 'Likes on their posts' },
+  { key: 'reposts_received', label: 'Reposts', title: 'Reposts of their posts' },
+];
+const formatCount = (value: number) => new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(value);
 
 interface ProfileHeroProps {
   name: string;
@@ -10,10 +20,11 @@ interface ProfileHeroProps {
   bio?: string;
   actions?: React.ReactNode;
   footnote?: React.ReactNode;
+  stats?: ProfileStats | null;
 }
 
 /** Cover + identity block shared by the own-profile and public-profile pages. */
-const ProfileHero = ({ name, handle, subtitle, avatarUrl, bio, actions, footnote }: ProfileHeroProps) => (
+const ProfileHero = ({ name, handle, subtitle, avatarUrl, bio, actions, footnote, stats }: ProfileHeroProps) => (
   <section>
     <div className="relative h-40 md:h-56 overflow-hidden border-b border-white/[0.06]">
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_70%_120%,hsl(271_91%_55%/0.55),transparent_55%),radial-gradient(ellipse_at_10%_-20%,hsl(250_90%_50%/0.35),transparent_50%),linear-gradient(180deg,hsl(262_50%_8%),hsl(260_40%_4%))]" />
@@ -44,6 +55,16 @@ const ProfileHero = ({ name, handle, subtitle, avatarUrl, bio, actions, footnote
           <p className="selectable whitespace-pre-wrap break-words text-white/75 leading-relaxed max-w-2xl">
             {bio || <span className="text-white/35 italic">No bio yet.</span>}
           </p>
+        )}
+        {stats && (
+          <dl className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm" aria-label="Profile stats">
+            {STATS.map(stat => (
+              <div key={stat.key} className="flex items-baseline gap-1.5" title={stat.title}>
+                <dt className="order-2 text-white/45">{stat.label}</dt>
+                <dd className="font-semibold tabular-nums text-white">{formatCount(stats[stat.key])}</dd>
+              </div>
+            ))}
+          </dl>
         )}
         {footnote && <p className="text-xs text-white/30">{footnote}</p>}
       </div>

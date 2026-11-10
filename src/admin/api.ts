@@ -1,27 +1,6 @@
-/** Client for the admin API. Requests go to this site's own /api, which checks the Neon Auth session. */
+/** Types for the admin API. Requests use the shared client, which checks the session on the server. */
 
-export class ApiError extends Error {
-  constructor(message: string, readonly status: number) {
-    super(message);
-  }
-}
-
-export const api = async <T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> => {
-  let res: Response;
-  try {
-    res = await fetch(path, {
-      method: init.method ?? 'GET',
-      credentials: 'same-origin',
-      headers: init.body === undefined ? undefined : { 'Content-Type': 'application/json' },
-      body: init.body === undefined ? undefined : JSON.stringify(init.body),
-    });
-  } catch {
-    throw new ApiError('The server could not be reached. Check your connection and try again.', 0);
-  }
-  const data = await res.json().catch(() => null);
-  if (!res.ok) throw new ApiError(data?.message || `Request failed (${res.status})`, res.status);
-  return data as T;
-};
+export { ApiError, api } from '@/lib/api';
 
 export interface AdminMe {
   id: string;

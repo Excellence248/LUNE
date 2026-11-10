@@ -5,7 +5,7 @@ import AuthShell from '@/components/auth/AuthShell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { supabase } from '@/lib/supabaseClient';
+import { api } from '@/lib/api';
 import { authErrorMessage } from '@/lib/auth-errors';
 
 const EmailLink = ({ purpose }: { purpose: 'recovery' | 'confirmation' }) => {
@@ -24,10 +24,8 @@ const EmailLink = ({ purpose }: { purpose: 'recovery' | 'confirmation' }) => {
     setSent(false);
     setError('');
     try {
-      const result = recovery
-        ? await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: new URL('/reset-password', window.location.origin).href })
-        : await supabase.auth.resend({ type: 'signup', email: email.trim(), options: { emailRedirectTo: new URL('/auth/callback', window.location.origin).href } });
-      if (result.error) throw result.error;
+      if (recovery) await api('/api/auth/request-password-reset', { method: 'POST', body: { email: email.trim(), redirectTo: new URL('/reset-password', window.location.origin).href } });
+      else await api('/api/auth/send-verification-email', { method: 'POST', body: { email: email.trim(), callbackURL: new URL('/auth/callback', window.location.origin).href } });
       setSent(true);
     } catch (cause) { setError(authErrorMessage(cause)); }
     finally { busy.current = false; setSending(false); }

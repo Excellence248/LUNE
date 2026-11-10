@@ -1,7 +1,18 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from 'react';
-import { supabase } from '@/lib/supabase';
+import { api, orNull, uploadImage } from '@/lib/api';
 import { useWallet } from '@/context/WalletContext';
 import { useAccountNotifications } from '@/hooks/useAccountNotifications';
+
+export interface ProfileStats {
+  followers: number;
+  following: number;
+  posts: number;
+  replies: number;
+  reposts: number;
+  likes_given: number;
+  likes_received: number;
+  reposts_received: number;
+}
 
 export interface PublicProfile {
   id: string;
@@ -9,6 +20,9 @@ export interface PublicProfile {
   wallet_address: string | null;
   avatar_url: string;
   bio: string;
+  /** Present when the profile is loaded by username. */
+  stats?: ProfileStats;
+  suspended?: boolean;
 }
 
 export interface Reply {
@@ -82,21 +96,8 @@ interface SocialContextType {
   markNotificationsAsRead: (ids?: string[]) => Promise<void>;
 }
 
-const postErrorMessage = (error: { code?: string; message?: string } | null) => {
-  const code = error?.code || '';
-  const detail = `${error?.message || 'unknown error'}${code ? ` (${code})` : ''}`;
-  if (code === '42501') return `The database refused this post (permission policy). Details: ${detail}`;
-  if (code === '23503') return `Your profile record is missing in the database, so the post was rejected. Log out and back in to recreate it. Details: ${detail}`;
-  if (code === '42703' || code === 'PGRST204') return `The posts table is missing an expected column. Details: ${detail}`;
-  if (code === '42P01' || code === 'PGRST205') return `The posts table was not found in the database. Details: ${detail}`;
-  if (/failed to fetch|network/i.test(error?.message || '')) return 'The server could not be reached. Check your connection and retry.';
-  if (/jwt|token/i.test(error?.message || '')) return 'Your login session expired. Please log out and sign in again.';
-  return `Your post could not be saved. Details: ${detail}`;
-};
-
 const SocialContext = createContext<SocialContextType | undefined>(undefined);
-export const postSelect = '*, profiles(username, avatar_url, wallet_address), likes(user_id), reposts(user_id), replies(*, profiles(username, avatar_url, wallet_address))';
-const imageExtensions: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
+const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
 export const SocialProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useWallet();
@@ -112,7 +113,8 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
   const [followingIds, setFollowingIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [feedError, setFeedError] = useState<string | null>(null);
-  const [liveStatus, setLiveStatus] = useState<'connecting' | 'live' | 'offline'>('connecting');
+  // Neon has no change stream: the feed polls, so the status reads "Auto-refresh".
+  const liveStatus = 'offline' as const;
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [followingLoading, setFollowingLoading] = useState(false);
@@ -129,15 +131,11 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
     const request = ++requestNumber.current;
     const limit = visibleCount.current;
     try {
-      const { data, error } = await supabase.from('posts').select(postSelect)
-        .order('created_at', { ascending: false }).order('id', { ascending: false })
-        .order('created_at', { referencedTable: 'replies', ascending: true })
-        .limit(limit + 1);
-      if (error) throw error;
+      const data = await api<{ items: Post[]; hasMore: boolean }>(`/api/posts?limit=${limit}`);
       if (request !== requestNumber.current) return;
       loadedCount.current = limit;
-      setHasMore((data?.length || 0) > limit);
-      setPosts((data || []).slice(0, limit) as unknown as Post[]);
+      setHasMore(data.hasMore);
+      setPosts(data.items);
       setFeedError(null);
     } catch {
       if (request === requestNumber.current) setFeedError('The public feed could not be refreshed. Your loaded posts are still available. Please retry.');
@@ -148,25 +146,12 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     fetchPosts();
-    let debounce: ReturnType<typeof setTimeout>;
-    const refresh = () => { clearTimeout(debounce); debounce = setTimeout(fetchPosts, 150); };
-    const channel = supabase.channel('live-public-feed');
-    for (const table of ['posts', 'likes', 'reposts', 'replies', 'profiles']) {
-      channel.on('postgres_changes', { event: '*', schema: 'public', table }, refresh);
-    }
-    channel.subscribe(status => {
-      setLiveStatus(status === 'SUBSCRIBED' ? 'live' : status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED' ? 'offline' : 'connecting');
-      if (status === 'SUBSCRIBED') refresh();
-    });
-    // A real refetch keeps the feed current if the change-stream connection is interrupted.
-    const interval = setInterval(fetchPosts, 30000);
+    const interval = setInterval(fetchPosts, 15000);
     const onVisible = () => { if (document.visibilityState === 'visible') fetchPosts(); };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
-      clearTimeout(debounce);
       clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisible);
-      supabase.removeChannel(channel);
     };
   }, [fetchPosts, userId]);
 
@@ -175,10 +160,9 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
     const request = ++followingRequest.current;
     setFollowingLoading(true);
     try {
-      const { data, error } = await supabase.from('follows').select('following_id').eq('follower_id', userId);
-      if (error) throw error;
+      const data = await api<string[]>('/api/me/follows');
       if (currentUserId.current !== userId || request !== followingRequest.current) return;
-      setFollowingIds((data || []).map(row => row.following_id));
+      setFollowingIds(data);
       setFollowingError(null);
     } catch {
       if (currentUserId.current === userId && request === followingRequest.current) setFollowingError('Your following status could not be loaded. Please retry.');
@@ -194,11 +178,8 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
     setFollowingLoading(false);
     if (!userId) return;
     void fetchFollowing();
-    const channel = supabase.channel(`following:${userId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'follows', filter: `follower_id=eq.${userId}` }, fetchFollowing)
-      .subscribe();
     const interval = setInterval(fetchFollowing, 30000);
-    return () => { followingRequest.current += 1; clearInterval(interval); void supabase.removeChannel(channel); };
+    return () => { followingRequest.current += 1; clearInterval(interval); };
   }, [userId, fetchFollowing]);
 
   const loadMore = async () => {
@@ -221,37 +202,19 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
     if (!text && !image) throw new Error('Write something or attach an image.');
     if (postingUsers.current.has(author)) throw new Error('Your post is already being saved.');
     postingUsers.current.add(author);
-    let path: string | undefined;
-    let saved = false;
     try {
       let imageUrl: string | undefined;
       if (image) {
-        const extension = imageExtensions[image.type];
-        if (!extension || image.size > 5 * 1024 * 1024) throw new Error('Choose a JPG, PNG, WebP, or GIF image up to 5MB.');
-        path = `${author}/${crypto.randomUUID()}.${extension}`;
-        const { error } = await supabase.storage.from('feed-media').upload(path, image, { contentType: image.type });
-        if (error) throw new Error('Your image could not be uploaded. Check your connection and login session, then retry.');
-        imageUrl = supabase.storage.from('feed-media').getPublicUrl(path).data.publicUrl;
+        if (!IMAGE_TYPES.includes(image.type) || image.size > 4 * 1024 * 1024) throw new Error('Choose a JPG, PNG, WebP, or GIF image up to 4MB.');
+        imageUrl = await uploadImage(image);
       }
       if (currentUserId.current !== author) throw new Error('Your account changed while posting. Log in and try again.');
-      const insertPost = () => supabase.from('posts').insert({ user_id: author, content: text, image_url: imageUrl }).select(postSelect).single();
-      let { data, error } = await insertPost();
-      if (error && (error.code === 'PGRST301' || error.code === 'PGRST303' || /jwt|token/i.test(error.message))) {
-        // Stale access token: refresh the session once and retry before giving up.
-        const { error: refreshError } = await supabase.auth.refreshSession();
-        if (!refreshError) ({ data, error } = await insertPost());
-      }
-      if (error || !data) {
-        console.error('Post insert failed:', error);
-        throw new Error(postErrorMessage(error));
-      }
-      saved = true;
+      const post = await api<Post>('/api/posts', { method: 'POST', body: { content: text, image_url: imageUrl } });
       requestNumber.current += 1;
-      setPosts(previous => [data as unknown as Post, ...previous.filter(post => post.id !== data.id)].slice(0, visibleCount.current));
+      setPosts(previous => [post, ...previous.filter(row => row.id !== post.id)].slice(0, visibleCount.current));
       setLoading(false);
       await fetchPosts();
     } finally {
-      if (path && !saved) await supabase.storage.from('feed-media').remove([path]).catch(() => undefined);
       postingUsers.current.delete(author);
     }
   };
@@ -262,17 +225,9 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
     if (busyRelations.current.has(key)) throw new Error('This action is already being saved.');
     busyRelations.current.add(key);
     try {
-      const { data: existing, error: readError } = await supabase.from(table).select('user_id').eq('post_id', postId).eq('user_id', author).maybeSingle();
-      if (readError) throw new Error('Your reaction could not be checked. Please retry.');
+      // The server toggles and reports the new state, so posts outside the feed work too.
+      const { active } = await api<{ active: boolean }>(`/api/posts/${postId}/${table === 'likes' ? 'like' : 'repost'}`, { method: 'POST', body: {} });
       if (currentUserId.current !== author) throw new Error('Your account changed. Log in and try again.');
-      if (existing) {
-        const { data: deleted, error } = await supabase.from(table).delete().eq('post_id', postId).eq('user_id', author).select('user_id');
-        if (error || !deleted?.length) throw new Error('Your reaction could not be removed. Check your login session and try again.');
-      } else {
-        const { error } = await supabase.from(table).insert({ post_id: postId, user_id: author });
-        if (error && error.code !== '23505') throw new Error('Your reaction could not be saved. Check your login session and try again.');
-      }
-      const active = !existing;
       requestNumber.current += 1;
       setPosts(previous => previous.map(post => post.id === postId ? {
         ...post,
@@ -291,9 +246,7 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
     if (busyRelations.current.has(key)) throw new Error('Your reply is already being saved.');
     busyRelations.current.add(key);
     try {
-      const { data, error } = await supabase.from('replies').insert({ post_id: postId, user_id: author, content: text }).select('*, profiles(username, avatar_url, wallet_address)').single();
-      if (error) throw new Error('Your reply could not be saved. Check your login session and connection, then retry.');
-      const reply = data as unknown as Reply;
+      const reply = await api<Reply>(`/api/posts/${postId}/replies`, { method: 'POST', body: { content: text } });
       requestNumber.current += 1;
       setPosts(previous => previous.map(post => post.id === postId ? { ...post, replies: [...(post.replies || []).filter(row => row.id !== reply.id), reply] } : post));
       await fetchPosts();
@@ -308,8 +261,7 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
     if (busyRelations.current.has(key)) return;
     busyRelations.current.add(key);
     try {
-      const { error } = await supabase.from('follows').insert({ follower_id: author, following_id: targetUserId });
-      if (error && error.code !== '23505') throw error;
+      await api(`/api/follows/${targetUserId}`, { method: 'POST', body: { active: true } });
       if (currentUserId.current !== author) return;
       followingRequest.current += 1;
       setFollowingLoading(false);
@@ -325,8 +277,7 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
     if (busyRelations.current.has(key)) return;
     busyRelations.current.add(key);
     try {
-      const { error } = await supabase.from('follows').delete().eq('follower_id', author).eq('following_id', targetUserId);
-      if (error) throw error;
+      await api(`/api/follows/${targetUserId}`, { method: 'POST', body: { active: false } });
       if (currentUserId.current !== author) return;
       followingRequest.current += 1;
       setFollowingLoading(false);
@@ -340,16 +291,11 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
   const searchUsers = useCallback(async (query: string): Promise<PublicProfile[]> => {
     const term = query.trim().replace(/^@/, '');
     if (!/^[A-Za-z0-9_]{1,64}$/.test(term)) return [];
-    const escaped = term.replace(/_/g, '\\_');
-    const { data, error } = await supabase.from('profiles').select('id, username, avatar_url, bio, wallet_address').ilike('username', `%${escaped}%`).order('username', { ascending: true }).limit(10);
-    if (error) throw error;
-    return data || [];
+    return api<PublicProfile[]>(`/api/profiles?q=${encodeURIComponent(term)}`);
   }, []);
 
   const getProfileByUsername = useCallback(async (username: string): Promise<PublicProfile | null> => {
-    const { data, error } = await supabase.from('profiles').select('id, username, avatar_url, bio, wallet_address').eq('username', username).maybeSingle();
-    if (error) throw error;
-    return data;
+    return orNull(api<PublicProfile>(`/api/profiles/${encodeURIComponent(username)}`));
   }, []);
 
   return (

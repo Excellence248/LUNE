@@ -3,8 +3,8 @@ import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/lune/Brand';
 import FeedCard from '@/components/lune/FeedCard';
-import { postSelect, useSocial, type Post } from '@/context/SocialContext';
-import { supabase } from '@/lib/supabase';
+import { useSocial, type Post } from '@/context/SocialContext';
+import { api } from '@/lib/api';
 
 interface ProfileActivityProps {
   user: { id: string; username: string; avatar: string; walletAddress: string | null };
@@ -27,14 +27,10 @@ const ProfileActivity = ({ user, kind, personal = true }: ProfileActivityProps) 
       setLoading(true);
       setError('');
       try {
-        const query = kind === 'reposts'
-          ? supabase.from('posts').select(`${postSelect}, matched_reposts:reposts!inner(user_id)`).eq('matched_reposts.user_id', user.id)
-          : supabase.from('posts').select(postSelect).eq('user_id', user.id);
-        const { data, error: queryError } = await query.order('created_at', { ascending: false }).order('id', { ascending: false }).order('created_at', { referencedTable: 'replies', ascending: true }).limit(limit + 1);
-        if (queryError) throw queryError;
+        const data = await api<{ items: Post[]; hasMore: boolean }>(`/api/profiles/${encodeURIComponent(user.username)}/activity?kind=${kind}&limit=${limit}`);
         if (!active) return;
-        setPosts((data || []).slice(0, limit) as unknown as Post[]);
-        setHasMore((data?.length || 0) > limit);
+        setPosts(data.items);
+        setHasMore(data.hasMore);
       } catch {
         if (active) setError('Profile activity could not be loaded. Please try again.');
       } finally {
@@ -43,7 +39,7 @@ const ProfileActivity = ({ user, kind, personal = true }: ProfileActivityProps) 
     };
     void fetchActivity();
     return () => { active = false; };
-  }, [user.id, kind, limit, retry, feedPosts]);
+  }, [user.username, kind, limit, retry, feedPosts]);
 
   return (
     <div>

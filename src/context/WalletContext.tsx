@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { supabase } from '@/lib/supabase';
+import { api } from '@/lib/api';
 import { getSolanaWallet, type SolanaWallet, type WalletName } from '@/lib/solana-wallet';
 import { authErrorMessage } from '@/lib/auth-errors';
 import { useSession } from '@/context/SessionContext';
@@ -12,6 +12,8 @@ interface WalletContextType extends ReturnType<typeof useSession> {
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined);
 
+const toBase64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
+
 export const WalletProvider = ({ children }: { children: ReactNode }) => {
   const account = useSession();
   const [connecting, setConnecting] = useState(false);
@@ -21,8 +23,8 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     setWalletError(null);
-    if (!account.session) setProvider(null);
-  }, [account.session?.user.id]);
+    if (!account.user) setProvider(null);
+  }, [account.user?.id]);
 
   useEffect(() => {
     if (!provider || !account.user?.walletAddress) return;
@@ -42,6 +44,8 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [provider, account.user?.walletAddress]);
 
+  // Sign-in with Solana: the wallet signs a one-time message from the server (no transaction, no funds),
+  // and the server checks the signature before starting a session.
   const connectWallet = async (name: WalletName) => {
     if (connectionInProgress.current) return;
     connectionInProgress.current = true;
@@ -52,25 +56,13 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       if (!wallet) throw new Error(`${name} was not detected. Use a browser with the wallet extension installed or the wallet’s in-app browser.`);
       await wallet.connect();
       if (!wallet.publicKey) throw new Error('The wallet did not return a public key.');
-      const { data, error } = await supabase.auth.signInWithWeb3({
-        chain: 'solana',
-        wallet: {
-          publicKey: wallet.publicKey,
-          signMessage: async (message: Uint8Array) => {
-            const signed = await wallet.signMessage(message, 'utf8');
-            return signed instanceof Uint8Array ? signed : signed.signature;
-          },
-        },
-        statement: 'Sign in to the Lune public feed. This proves wallet ownership only; it does not authorize a transaction or transfer funds.',
-      });
-      if (error) throw error;
-      if (!data.session) throw new Error('Wallet authentication did not return a session.');
-      const { data: profile, error: profileError } = await supabase.rpc('ensure_wallet_profile');
-      if (profileError) throw profileError;
-      if (profile.wallet_address !== wallet.publicKey?.toBase58()) {
-        await supabase.auth.signOut();
-        throw new Error('The selected wallet changed during sign-in. Please reconnect.');
-      }
+      const address = wallet.publicKey.toBase58();
+      const { nonce, message } = await api<{ nonce: string; message: string }>('/api/wallet/nonce', { method: 'POST', body: { address } });
+      const signed = await wallet.signMessage(new TextEncoder().encode(message), 'utf8');
+      const signature = signed instanceof Uint8Array ? signed : signed.signature;
+      if (wallet.publicKey?.toBase58() !== address) throw new Error('The selected wallet changed during sign-in. Please reconnect.');
+      await api('/api/wallet/verify', { method: 'POST', body: { address, nonce, signature: toBase64(signature) } });
+      await account.refreshProfile();
       setProvider(wallet);
     } catch (error) {
       setWalletError(authErrorMessage(error));
