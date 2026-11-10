@@ -9,7 +9,43 @@
 - `neon/migrations/20261110_initial_schema.sql` was **applied on 2026-11-10**. All 11 tables below exist and are empty. Constraint, notification-trigger, index and cascade tests passed against the live tables inside a rolled-back transaction.
 - No Supabase export or media backup has been supplied. Do not remove Supabase data or switch existing members to an empty database.
 
+- `neon/migrations/20261110_profile_stats_and_roles.sql` was **applied on 2026-11-10**: the `profile_stats` view, roles and permissions, suspensions and the admin audit log. Its tests passed against the live tables inside a rolled-back transaction.
+
 Make further schema changes as new files in `neon/migrations/`. Usernames are unique case-insensitively (`lower(username)`); resolve legacy case-duplicates before import.
+
+**Legacy usernames that will not import as-is:** the two current Supabase profiles are `Sammy🐳` and `Excellence@248`. Both break the `^[A-Za-z0-9_]{3,64}$` rule that the app's own profile editor already enforces. Rename them (for example `Sammy` and `Excellence_248`) during import; their profile IDs, and so their admin role, stay the same.
+
+## Profile stats
+
+`profile_stats` computes each profile's followers, following, posts, replies, reposts, likes given, likes received and reposts received from the source tables, so the counts never drift. `GET /api/profiles/:username` returns the public profile with these counts, its active badge and whether it is suspended. Guests can read it. It is not wired into the React profile pages yet, because those still read Supabase.
+
+## Roles and the admin panel
+
+- **Members** (every profile) may edit their own profile, post, reply, like, repost, follow, and delete their own posts and replies.
+- **Admins** additionally open the admin panel, remove any post or reply, suspend and reinstate members, grant and revoke badges, and read the audit log.
+- A suspended member can still sign in and read but loses every permission. Database triggers also block their posts, replies, likes, reposts and follows. Admins cannot be suspended.
+- Roles live in `profile_roles` and change only through SQL run by the database owner; no API or panel screen grants them. The two founding admins are `role_bootstrap` entries keyed by their Supabase profile IDs (`2b4a3834…` Excellence@248, `cfaa2613…` Sammy). They become admins automatically when those profile rows are imported.
+- Every admin action goes through an `admin_*` SQL function that re-checks the permission and writes `admin_actions`, an append-only audit log. Removed posts and replies are copied into it.
+- Server routes check access with `requirePermission(event, '<permission>')` in `server/utils/auth.ts`. It verifies the Neon Auth session with Neon Auth itself, then resolves the profile through `profile_accounts`.
+
+The admin panel is at `/admin`. It is a separate React tree in its own chunk (`src/admin/`), loaded only on that path. Neon Auth requests go through the same-origin proxy at `/api/auth/*`.
+
+### Setting up the two admins
+
+1. Import the Supabase profiles into Neon (renaming the two usernames above). Both founders get the admin role automatically.
+2. Each admin opens `/admin`, chooses **First time? Create your sign-in**, and signs in. The panel then says the sign-in is not linked and shows its Neon Auth user ID.
+3. The database owner links each one in the Neon SQL editor:
+
+   ```sql
+   insert into public.profile_accounts (profile_id, neon_auth_user_id)
+   values ('2b4a3834-f524-4458-9066-500d638069de', '<Excellence''s Neon Auth user ID>'),
+          ('cfaa2613-87d9-4327-aee5-71720ca9e138', '<Sammy''s Neon Auth user ID>')
+   on conflict (profile_id) do update set neon_auth_user_id = excluded.neon_auth_user_id;
+   ```
+
+4. If Neon Auth rejects sign-in from the deployed domain, add that domain to Neon Auth's trusted domains in the Neon Console.
+
+Not yet verified end to end: a real Neon Auth sign-in through the proxy (it needs a real account), and email-verification settings. The panel UI was checked with mocked API responses, and every query the admin routes run was checked against the live schema.
 
 ## Required tables and constraints
 

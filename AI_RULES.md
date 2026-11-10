@@ -15,6 +15,9 @@
 - DATABASE_URL and NEON_AUTH_BASE_URL remain server-only. Never import server modules or @neondatabase/serverless into src/.
 - /api/database-health is a public read-only connection probe; it exposes no records or credentials.
 - Neon is connected but application profiles/social/auth/payment flows still use Supabase. Do not treat the migration as complete or delete existing data.
+- Protect Neon routes with requirePermission(event, permission) from server/utils/auth.ts. Admin writes go through the admin_* SQL functions, which re-check permissions and write the append-only admin_actions log.
+- Roles change only by SQL run by the database owner. Never add an API or UI that grants roles, and never accept a client-supplied profile ID on signup.
+- The admin panel is src/admin/, mounted by src/main.tsx on /admin as a separate React tree. Never import src/admin from the member app.
 
 # Accounts
 
