@@ -92,7 +92,8 @@ const AccountForm = ({ view }: { view: 'sign_in' | 'sign_up' }) => {
         </Button>
       </form>
       {!signup && <div className="text-right"><Link to="/forgot-password" className="text-sm text-lune-300 hover:underline">Forgot password?</Link></div>}
-      {signup && <p className="text-xs leading-relaxed text-white/45">We’ll email you a 6-digit code to confirm your address. Then you can set up your profile and start posting.</p>}
+      {!signup && <p className="text-xs leading-relaxed text-white/45">Had an account before Lune’s update? Your old password didn’t carry over. <Link to="/signup" className="text-lune-300 hover:underline">Sign up with the same email</Link> to get your profile back.</p>}
+      {signup && <p className="text-xs leading-relaxed text-white/45">You must be 18 or older to use Lune. We’ll email you a 6-digit code to confirm your address. Then you can set up your profile and start posting.</p>}
       <div className="flex items-center gap-3" aria-hidden="true"><div className="h-px flex-1 bg-white/10" /><span className="text-xs text-white/40">or use a wallet</span><div className="h-px flex-1 bg-white/10" /></div>
       <Button type="button" variant="outline" className="h-12 w-full rounded-xl border-white/15 glass-soft hover:bg-white/5" onClick={() => setWalletOpen(true)}><Wallet className="mr-2 h-4 w-4" /> Continue with wallet</Button>
       <div className="space-y-3 border-t border-white/10 pt-5 text-center text-sm text-white/50">

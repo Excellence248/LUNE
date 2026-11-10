@@ -2,6 +2,7 @@ import { defineHandler } from 'nitro';
 import { HTTPError, readBody } from 'nitro/h3';
 import { requirePermission } from '../../utils/auth';
 import { rateLimit } from '../../utils/limits';
+import { enforceCivility } from '../../utils/moderation';
 import { sql } from '../../utils/db';
 
 interface Changes { username?: unknown; bio?: unknown; avatar_url?: unknown }
@@ -16,6 +17,8 @@ export default defineHandler(async (event) => {
   const bio = typeof body.bio === 'string' ? body.bio : me.bio;
   if (!/^[A-Za-z0-9_]{3,64}$/.test(username)) throw new HTTPError('Use 3–64 letters, numbers, or underscores for your username.', { status: 400 });
   if (bio.length > 500) throw new HTTPError('Your bio must be 500 characters or fewer.', { status: 400 });
+  if (username !== me.username) await enforceCivility(me.id, 'username', username);
+  if (bio !== me.bio) await enforceCivility(me.id, 'bio', bio);
   // The client echoes back the avatar URL it was given; that means "unchanged".
   const avatar = typeof body.avatar_url === 'string' && body.avatar_url !== me.avatar_url ? body.avatar_url : null;
   if (avatar !== null) {

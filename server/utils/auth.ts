@@ -1,5 +1,6 @@
 import { HTTPError, getCookie, type H3Event } from 'nitro/h3';
 import { sql } from './db';
+import { ageStatus } from './age';
 import { WALLET_COOKIE, readWalletSession } from './wallet';
 
 export interface SessionProfile {
@@ -49,6 +50,13 @@ export const getViewer = async (event: H3Event): Promise<Viewer | null> => {
   return profile?.id ? { kind: 'email', email, emailVerified, profile } : null;
 };
 
+/** Throws 403 unless the member has confirmed they are old enough. */
+const requireAdult = async (profileId: string) => {
+  const status = await ageStatus(profileId);
+  if (status === 'required') throw new HTTPError('Confirm your date of birth to continue.', { status: 403 });
+  if (status === 'underage') throw new HTTPError('Lune is only for members aged 18 and over.', { status: 403 });
+};
+
 /** Returns the caller, or throws 401 when nobody is signed in. */
 export const requireViewer = async (event: H3Event) => {
   const viewer = await getViewer(event);
@@ -61,5 +69,13 @@ export const requirePermission = async (event: H3Event, permission: string) => {
   const { profile } = await requireViewer(event);
   const [{ allowed }] = (await sql`select public.has_permission(${profile.id}, ${permission}) as allowed`) as { allowed: boolean }[];
   if (!allowed) throw new HTTPError('You do not have access to this', { status: 403 });
+  await requireAdult(profile.id);
   return profile;
+};
+
+/** Like requireViewer, for actions with no permission of their own (payments, Spaces) that still need an adult. */
+export const requireAdultViewer = async (event: H3Event) => {
+  const viewer = await requireViewer(event);
+  await requireAdult(viewer.profile.id);
+  return viewer;
 };

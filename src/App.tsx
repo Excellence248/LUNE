@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AppWrapper } from "./components/lune/AppWrapper";
 import RequireAccount from "./components/auth/RequireAccount";
+import AgeGate from "./components/auth/AgeGate";
 import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
 import AuthCallback from "./pages/AuthCallback";
@@ -41,6 +42,7 @@ import NotFound from "./pages/NotFound";
 const App = () => (
   <AppWrapper>
     <BrowserRouter>
+      <AgeGate>
       <Routes>
         <Route path="/signin" element={<SignIn />} />
         <Route path="/signup" element={<SignUp />} />
@@ -80,6 +82,7 @@ const App = () => (
         <Route path="/analytics" element={<Analytics />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
+      </AgeGate>
     </BrowserRouter>
   </AppWrapper>
 );
