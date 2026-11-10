@@ -11,6 +11,10 @@ const LIMITED: Record<string, keyof typeof LIMITS> = {
   '/send-verification-email': 'authEmail',
   '/request-password-reset': 'authEmail',
   '/reset-password': 'signIn',
+  '/email-otp/send-verification-otp': 'authEmail',
+  '/forget-password/email-otp': 'authEmail',
+  '/email-otp/verify-email': 'signIn',
+  '/email-otp/reset-password': 'signIn',
 };
 
 // Same-origin proxy to Neon Auth, so its session cookie is first-party and httpOnly on this site.

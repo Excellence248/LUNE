@@ -8,6 +8,9 @@ export const authErrorMessage = (error: unknown): string => {
     if (error.code === 'USER_ALREADY_EXISTS' || error.code === 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL') return 'An account with this email already exists. Sign in instead.';
     if (error.code === 'PASSWORD_TOO_SHORT') return 'Choose a password with at least 8 characters.';
     if (error.code === 'INVALID_TOKEN') return 'This link is expired or has already been used. Request a new one.';
+    if (error.code === 'INVALID_OTP') return 'That code is not right. Check the latest email and try again.';
+    if (error.code === 'OTP_EXPIRED') return 'That code has expired. Send a new code and try again.';
+    if (error.code === 'TOO_MANY_ATTEMPTS') return 'Too many wrong codes. Send a new code and try again.';
     if (error.status === 429) return 'Too many attempts. Wait a few minutes, then try again.';
     if (error.status === 0) return 'The account service could not be reached. Check your connection and try again.';
   }
