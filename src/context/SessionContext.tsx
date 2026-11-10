@@ -26,8 +26,13 @@ interface AccountProfile {
   avatar_url: string;
 }
 
+/** 'required': must confirm a date of birth; 'ok': may use Lune; 'underage': too young. null while signed out. */
+export type AgeStatus = 'required' | 'ok' | 'underage';
+
 interface SessionContextType {
   session: Account | null;
+  ageStatus: AgeStatus | null;
+  confirmAge: (birthDate: string) => Promise<void>;
   user: AccountUser | null;
   isAuthenticated: boolean;
   loading: boolean;
@@ -49,6 +54,7 @@ const mapProfile = (profile: AccountProfile, email: string): AccountUser => ({
 export const SessionContextProvider = ({ children }: { children: ReactNode }) => {
   const [session, setSession] = useState<Account | null>(null);
   const [user, setUser] = useState<AccountUser | null>(null);
+  const [ageStatus, setAgeStatus] = useState<AgeStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const request = useRef(0);
@@ -57,9 +63,10 @@ export const SessionContextProvider = ({ children }: { children: ReactNode }) =>
   const refreshProfile = useCallback(async () => {
     const id = ++request.current;
     try {
-      const data = await api<{ account: Account | null; profile: AccountProfile | null }>('/api/me');
+      const data = await api<{ account: Account | null; profile: AccountProfile | null; ageStatus: AgeStatus | null }>('/api/me');
       if (id !== request.current) return;
       setSession(data.account);
+      setAgeStatus(data.account ? data.ageStatus : null);
       setUser(data.account && data.profile ? mapProfile(data.profile, data.account.email ?? '') : null);
       setAuthError(null);
     } catch (error) {
@@ -106,7 +113,14 @@ export const SessionContextProvider = ({ children }: { children: ReactNode }) =>
     request.current += 1;
     setSession(null);
     setUser(null);
+    setAgeStatus(null);
     setAuthError(null);
+  };
+
+  // The server records the date once and answers with its verdict; it cannot be changed afterwards.
+  const confirmAge = async (birthDate: string) => {
+    const result = await api<{ ageStatus: AgeStatus }>('/api/me/age', { method: 'POST', body: { birth_date: birthDate } });
+    setAgeStatus(result.ageStatus);
   };
 
   const updateProfile = async (data: Partial<Pick<AccountUser, 'username' | 'bio' | 'avatar'>>) => {
@@ -120,7 +134,7 @@ export const SessionContextProvider = ({ children }: { children: ReactNode }) =>
   };
 
   return (
-    <SessionContext.Provider value={{ session, user, isAuthenticated: !!session, loading, authError, refreshProfile, signIn, signUp, signOut, updateProfile }}>
+    <SessionContext.Provider value={{ session, ageStatus, confirmAge, user, isAuthenticated: !!session, loading, authError, refreshProfile, signIn, signUp, signOut, updateProfile }}>
       {children}
     </SessionContext.Provider>
   );

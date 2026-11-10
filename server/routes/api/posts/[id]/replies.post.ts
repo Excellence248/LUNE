@@ -3,6 +3,7 @@ import { HTTPError, getRouterParam, readBody } from 'nitro/h3';
 import { uuidParam } from '../../../../utils/admin';
 import { requirePermission } from '../../../../utils/auth';
 import { rateLimit } from '../../../../utils/limits';
+import { enforceCivility } from '../../../../utils/moderation';
 import { sql } from '../../../../utils/db';
 
 // Body: { content }. Returns the new reply with its author.
@@ -13,6 +14,7 @@ export default defineHandler(async (event) => {
   const { content } = ((await readBody<{ content?: unknown }>(event)) ?? {}) as { content?: unknown };
   const text = typeof content === 'string' ? content.trim() : '';
   if (!text || text.length > 1000) throw new HTTPError('Replies must contain 1–1,000 characters.', { status: 400 });
+  await enforceCivility(me.id, 'reply', text);
   try {
     const [row] = await sql`
       insert into public.replies (post_id, user_id, content) values (${post}, ${me.id}, ${text})

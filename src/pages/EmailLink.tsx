@@ -80,6 +80,12 @@ const EmailLink = ({ purpose }: { purpose: 'recovery' | 'confirmation' }) => {
           <Button type="submit" disabled={sending} className="h-11 w-full rounded-xl bg-lune-500 hover:bg-lune-600">{sending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Mail className="mr-2 h-4 w-4" />}{sending ? 'Sending…' : 'Send code'}</Button>
         </form>
       )}
+      {recovery && sentTo && (
+        <p className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs leading-relaxed text-white/55">
+          No code after a minute? Accounts made before Lune moved to its new sign-in system have to be set up again, and no reset email is sent for them.
+          {' '}<Link to="/signup" className="text-lune-300 hover:underline">Sign up with the same email</Link>, confirm it, and your old profile, posts and followers come back.
+        </p>
+      )}
       <p className="text-center text-sm"><Link to="/signin" className="text-lune-300 hover:underline">Back to login</Link></p>
     </AuthShell>
   );

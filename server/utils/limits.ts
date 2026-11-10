@@ -19,6 +19,7 @@ export const LIMITS = {
   signUp: [5, 3600],
   signIn: [20, 600],
   authEmail: [5, 3600],
+  age: [10, 3600],
 } as const satisfies Record<string, readonly [number, number]>;
 
 /** The caller's IP as Vercel reports it; "local" in development. */

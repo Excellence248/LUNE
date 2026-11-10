@@ -1,6 +1,6 @@
 import { defineHandler } from 'nitro';
 import { HTTPError, readBody } from 'nitro/h3';
-import { requireViewer } from '../../utils/auth';
+import { requireAdultViewer } from '../../utils/auth';
 import { rateLimit } from '../../utils/limits';
 import { sql } from '../../utils/db';
 
@@ -25,7 +25,7 @@ export default defineHandler(async (event) => {
   const rpc = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
   const mint = process.env.USDC_MINT || 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
   if (!treasury) throw new HTTPError('Payments are not configured yet (missing TREASURY_ADDRESS).', { status: 503 });
-  const { profile } = await requireViewer(event);
+  const { profile } = await requireAdultViewer(event);
   await rateLimit('payment', profile.id);
   const body = ((await readBody<Body>(event)) ?? {}) as Body;
   const reference = typeof body.reference === 'string' && BASE58.test(body.reference) ? body.reference : null;
