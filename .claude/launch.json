@@ -1,0 +1,21 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "lune-dev",
+      "runtimeExecutable": "node_modules/.bin/vite",
+      "runtimeArgs": [],
+      "port": 8080
+    },
+    {
+      "name": "lune-prod-preview",
+      "runtimeExecutable": "node_modules/.bin/vite",
+      "runtimeArgs": [
+        "preview",
+        "--port",
+        "4173"
+      ],
+      "port": 4173
+    }
+  ]
+}
