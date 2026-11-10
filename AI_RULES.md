@@ -8,7 +8,8 @@
 # Server and Neon
 
 - Nitro's Vite plugin runs before React and the component tagger; use node-server in development and the Vercel preset for builds. Vite 8 supports the installed Nitro plugin.
-- Server routes live in server/routes/; .get.ts restricts a route to GET.
+- Server routes live in server/routes/; .get.ts restricts a route to GET. Keep serverDir: "./server" in the Nitro plugin options; without it Nitro 3 scans no server routes.
+- The Neon schema lives in neon/migrations/. Add new migrations there instead of editing an applied one.
 - Import defineHandler from nitro and h3 utilities from nitro/h3 explicitly.
 - Reuse server/utils/db.ts for Neon queries and import sql explicitly in handlers.
 - DATABASE_URL and NEON_AUTH_BASE_URL remain server-only. Never import server modules or @neondatabase/serverless into src/.

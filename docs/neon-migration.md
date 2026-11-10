@@ -3,11 +3,13 @@
 ## Current implementation status
 
 - The app has a server-only Neon client in `server/utils/db.ts` and a read-only `/api/database-health` route.
+- `vite.config.ts` sets Nitro's `serverDir` to `./server`. Nitro 3 defaults it to `false`, which previously left every `server/routes` handler out of dev and the Vercel build (`/api/database-health` returned the SPA page).
 - Application authentication, profiles, social queries, storage, and payment functions still use Supabase.
-- The most recent successful Neon project listing reported no public application tables. Subsequent schema inspection and the first `CREATE TABLE` request failed with `fetch failed`. No schema creation is confirmed.
+- The database connection works: `DATABASE_URL` reaches Postgres 18, and `/api/database-health` reports `connected` in dev. Neon Auth's `neon_auth` schema is provisioned with no users.
+- `neon/migrations/20261110_initial_schema.sql` was **applied on 2026-11-10**. All 11 tables below exist and are empty. Constraint, notification-trigger, index and cascade tests passed against the live tables inside a rolled-back transaction.
 - No Supabase export or media backup has been supplied. Do not remove Supabase data or switch existing members to an empty database.
 
-This document specifies the required schema; it is not a migration and does not mean the tables exist. Apply schema changes through the connected database SQL tooling once it is working.
+Make further schema changes as new files in `neon/migrations/`. Usernames are unique case-insensitively (`lower(username)`); resolve legacy case-duplicates before import.
 
 ## Required tables and constraints
 
@@ -76,13 +78,16 @@ Import parents before children, preserve IDs, compare source and destination row
 - Validate sign-up, sign-in, verification, recovery, profile ownership, guest reads, posting, uploads, reactions, follows, notifications, and duplicate-payment handling.
 - Maintain a rollback path and retain the Supabase source until the migrated data and application have been verified.
 
-## Live database verification still required
+## Live database verification
 
-After SQL access is restored:
+Done on 2026-11-10, against the live tables in a rolled-back transaction:
 
-- Inspect every created table and constraint using live schema queries.
-- In a rolled-back transaction or isolated development branch, test duplicate usernames, duplicate reactions, self-follows, orphaned references, oversized/empty text, invalid payment states, and duplicate transaction signatures.
-- Verify the query indexes and owner/recipient filters.
-- Verify source-to-destination counts and media availability after import.
+- Every table, constraint, index, trigger and function was inspected with live schema queries.
+- Duplicate usernames (any case), wallets, reactions, follows and identity links; self-follows; self-notifications; oversized or empty text; invalid payment states; and reused transaction signatures are all rejected.
+- Notification triggers fire for likes, reposts, replies and follows, skip self-activity, and stay off while `lune.importing` is `on`.
+- The feed, inbox and unread-count queries use their indexes, and deleting a profile cascades its activity.
 
-None of these live database checks has been completed while schema/SQL access is failing.
+Still required:
+
+- Owner and recipient filters in the server APIs, once they exist.
+- Orphaned-reference checks, source-to-destination row counts, and media availability after import.
