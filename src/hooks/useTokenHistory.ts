@@ -23,8 +23,16 @@ export const useTokenHistory = (symbol: string) => {
     setLoading(true);
     const fetchHistory = async () => {
       try {
-        const response = await fetch(`https://api.binance.com/api/v3/klines?symbol=${encodeURIComponent(symbol.toUpperCase())}USDT&interval=1h&limit=100`);
-        if (!response.ok) throw new Error('History unavailable');
+        // Binance's public market-data mirror first (reachable from more networks), then the main host.
+        const query = `/api/v3/klines?symbol=${encodeURIComponent(symbol.toUpperCase())}USDT&interval=1h&limit=100`;
+        let response: Response | null = null;
+        for (const host of ['https://data-api.binance.vision', 'https://api.binance.com']) {
+          try {
+            const attempt = await fetch(`${host}${query}`);
+            if (attempt.ok) { response = attempt; break; }
+          } catch { /* try the next host */ }
+        }
+        if (!response) throw new Error('History unavailable');
         const data = await response.json();
         if (!Array.isArray(data)) throw new Error('Invalid price history');
         const candles: OHLCVData[] = data.map((row: (string | number)[]) => ({
