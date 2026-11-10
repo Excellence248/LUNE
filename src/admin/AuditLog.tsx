@@ -10,6 +10,8 @@ const ACTION_LABELS: Record<AuditEntry['action'], string> = {
   remove_reply: 'Removed reply',
   grant_badge: 'Granted badge',
   revoke_badge: 'Revoked badge',
+  resolve_report: 'Resolved report',
+  dismiss_report: 'Dismissed report',
 };
 
 const detail = (entry: AuditEntry) => {

@@ -23,6 +23,7 @@ export interface ActionBody {
   reason?: unknown;
   until?: unknown;
   tier?: unknown;
+  outcome?: unknown;
 }
 
 /** Every admin action needs a reason for the audit log; `until` is an optional future ISO date. */
@@ -36,7 +37,7 @@ export const readAction = async (event: H3Event) => {
     if (Number.isNaN(date.getTime()) || date.getTime() <= Date.now()) throw new HTTPError('The end date must be in the future', { status: 400 });
     until = date.toISOString();
   }
-  return { reason, until, tier: body.tier };
+  return { reason, until, tier: body.tier, body };
 };
 
 /** Turns the errors raised by the admin_* SQL functions into HTTP responses. */

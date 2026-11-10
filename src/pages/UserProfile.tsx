@@ -1,19 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Loader2, UserMinus, UserPlus, UserX } from 'lucide-react';
+import { Ban, Flag, Loader2, MoreHorizontal, UserMinus, UserPlus, UserX } from 'lucide-react';
 import Layout from '@/components/lune/Layout';
 import ProfileHero from '@/components/lune/ProfileHero';
 import ProfileActivity from '@/components/lune/ProfileActivity';
 import { EmptyState } from '@/components/lune/Brand';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import ReportDialog from '@/components/lune/ReportDialog';
+import ConfirmDialog, { type Confirm } from '@/components/lune/ConfirmDialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSocial, type PublicProfile } from '@/context/SocialContext';
 import { useWallet } from '@/context/WalletContext';
-import { showError } from '@/utils/toast';
+import { showError, showSuccess } from '@/utils/toast';
 
 const PublicProfileView = ({ username }: { username: string }) => {
   const { user: currentUser } = useWallet();
-  const { posts, isFollowing, followUser, unfollowUser, getProfileByUsername, followingLoading, followingError, refreshFollowing } = useSocial();
+  const { posts, isFollowing, followUser, unfollowUser, getProfileByUsername, followingLoading, followingError, refreshFollowing, isBlocked, blockUser, unblockUser } = useSocial();
+  const [reporting, setReporting] = useState(false);
+  const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -86,6 +91,39 @@ const PublicProfileView = ({ username }: { username: string }) => {
 
   const following = isFollowing(profile.id);
   const isMe = currentUser?.id === profile.id;
+  const blocked = isBlocked(profile.id);
+
+  const applyBlock = async (block: boolean) => {
+    if (block) await blockUser(profile.id);
+    else await unblockUser(profile.id);
+    showSuccess(block ? `@${profile.username} is blocked` : `@${profile.username} is unblocked`);
+    const updated = await getProfileByUsername(profile.username).catch(() => null);
+    if (updated) setProfile(updated);
+  };
+  const toggleBlock = () => {
+    if (blocked) {
+      void applyBlock(false).catch(error => showError(error instanceof Error ? error.message : 'That could not be saved. Try again.'));
+      return;
+    }
+    setConfirm({
+      title: `Block @${profile.username}?`,
+      description: 'You won’t see their posts, and neither of you can follow, reply to, like or repost the other. You can unblock them here.',
+      action: 'Block',
+      run: () => applyBlock(true),
+    });
+  };
+
+  const moreMenu = currentUser && !isMe && (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="icon" aria-label={`More options for @${profile.username}`} className="rounded-full border-white/15 bg-transparent"><MoreHorizontal className="h-4 w-4" /></Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={() => setReporting(true)}><Flag className="mr-2 h-4 w-4" />Report @{profile.username}</DropdownMenuItem>
+        <DropdownMenuItem className={blocked ? '' : 'text-red-300 focus:text-red-200'} onSelect={toggleBlock}><Ban className="mr-2 h-4 w-4" />{blocked ? 'Unblock' : 'Block'} @{profile.username}</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
   const activityUser = { id: profile.id, username: profile.username, avatar: profile.avatar_url, walletAddress: profile.wallet_address };
 
   return (
@@ -99,7 +137,10 @@ const PublicProfileView = ({ username }: { username: string }) => {
         footnote={profile.suspended ? 'This account is suspended.' : undefined}
         actions={isMe ? (
           <Button asChild variant="outline" className="rounded-full border-white/15 bg-transparent"><Link to="/profile">Edit profile</Link></Button>
+        ) : blocked ? (
+          <>{moreMenu}<Button variant="outline" className="rounded-full border-white/15 bg-transparent" onClick={toggleBlock}>Unblock</Button></>
         ) : (
+          <>{moreMenu}
           <Button
             variant={following ? 'outline' : 'default'}
             disabled={!currentUser || pending || followingLoading || !!followingError}
@@ -112,11 +153,15 @@ const PublicProfileView = ({ username }: { username: string }) => {
             {pending || (currentUser && followingLoading) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : following ? <UserMinus className="mr-2 h-4 w-4" /> : <UserPlus className="mr-2 h-4 w-4" />}
             {pending ? following ? 'Unfollowing…' : 'Following…' : currentUser && followingLoading ? 'Checking…' : following ? 'Unfollow' : 'Follow'}
           </Button>
+          </>
         )}
       />
 
       {currentUser && !isMe && followingError && <div className="mx-4 mt-5 flex max-w-3xl flex-wrap items-center gap-3 rounded-xl border border-red-400/20 bg-red-400/10 p-3 md:mx-10"><p role="alert" className="text-sm text-red-200">{followingError}</p><Button size="sm" variant="outline" disabled={followingLoading} onClick={() => void refreshFollowing()}>Retry status</Button></div>}
 
+      {blocked ? (
+        <p className="mx-4 mb-8 mt-8 max-w-4xl rounded-3xl border border-white/10 p-6 text-sm text-white/60 md:mx-10">You blocked @{profile.username}. Unblock them to see their posts.</p>
+      ) : (
       <section className="mx-4 mb-8 mt-8 max-w-4xl overflow-hidden rounded-3xl border border-white/10 glass-soft md:mx-10" aria-label={`Activity by ${profile.username}`}>
         <Tabs defaultValue="posts">
           <div className="border-b border-white/10 px-5 pt-5">
@@ -129,6 +174,9 @@ const PublicProfileView = ({ username }: { username: string }) => {
           <TabsContent value="reposts" className="mt-0"><ProfileActivity key={`${profile.id}-reposts`} user={activityUser} kind="reposts" personal={false} /></TabsContent>
         </Tabs>
       </section>
+      )}
+      {confirm && <ConfirmDialog confirm={confirm} onClose={() => setConfirm(null)} />}
+      {reporting && <ReportDialog target={{ type: 'profile', id: profile.id, label: `@${profile.username}` }} onClose={() => setReporting(false)} />}
     </Layout>
   );
 };

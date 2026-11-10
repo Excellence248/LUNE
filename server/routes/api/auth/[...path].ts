@@ -1,7 +1,17 @@
 import { defineHandler } from 'nitro';
 import { HTTPError } from 'nitro/h3';
+import { clientIp, rateLimit, type LIMITS } from '../../../utils/limits';
 
 const FORWARD_HEADERS = ['accept', 'content-type', 'cookie', 'origin', 'user-agent'];
+
+// Limits per IP on the Neon Auth calls that create accounts, try passwords or send email.
+const LIMITED: Record<string, keyof typeof LIMITS> = {
+  '/sign-up/email': 'signUp',
+  '/sign-in/email': 'signIn',
+  '/send-verification-email': 'authEmail',
+  '/request-password-reset': 'authEmail',
+  '/reset-password': 'signIn',
+};
 
 // Same-origin proxy to Neon Auth, so its session cookie is first-party and httpOnly on this site.
 export default defineHandler(async (event) => {
@@ -13,12 +23,14 @@ export default defineHandler(async (event) => {
   if (method !== 'GET' && method !== 'HEAD' && origin && new URL(origin).host !== headers.get('host')) {
     throw new HTTPError('Cross-site request blocked', { status: 403 });
   }
+  const path = event.url.pathname.replace(/^\/api\/auth/, '');
+  if (method === 'POST' && LIMITED[path]) await rateLimit(LIMITED[path], clientIp(event));
   const forward = new Headers();
   for (const name of FORWARD_HEADERS) {
     const value = headers.get(name);
     if (value) forward.set(name, value);
   }
-  const upstream = await fetch(`${base}${event.url.pathname.replace(/^\/api\/auth/, '')}${event.url.search}`, {
+  const upstream = await fetch(`${base}${path}${event.url.search}`, {
     method,
     headers: forward,
     body: method === 'GET' || method === 'HEAD' ? undefined : await event.req.arrayBuffer(),

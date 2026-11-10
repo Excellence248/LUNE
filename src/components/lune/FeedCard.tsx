@@ -2,15 +2,18 @@
 import VerifiedBadge from '@/components/lune/VerifiedBadge';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { MessageCircle, Repeat2, Heart, Coins, SendHorizontal } from 'lucide-react';
+import { MessageCircle, Repeat2, Heart, Coins, SendHorizontal, MoreHorizontal, Trash2, Flag, Ban } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import ConfirmDialog, { type Confirm } from './ConfirmDialog';
+import ReportDialog from './ReportDialog';
 import { cn } from '@/lib/utils';
 import TipModal from './TipModal';
-import { useSocial, type Post, type Reply } from '@/context/SocialContext';
+import { useSocial, type Post, type Reply, type ReportTarget } from '@/context/SocialContext';
 import { useWallet } from '@/context/WalletContext';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { Link, useNavigate } from 'react-router-dom';
-import { showError } from '@/utils/toast';
+import { showError, showSuccess } from '@/utils/toast';
 import { shortWalletAddress } from '@/lib/solana-wallet';
 
 interface FeedCardProps {
@@ -94,7 +97,10 @@ const ActionButton = ({
 const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardProps) => {
   const navigate = useNavigate();
   const { user: currentUser } = useWallet();
-  const { toggleLike, toggleRepost, addComment, followUser, unfollowUser, isFollowing, followingLoading, followingError } = useSocial();
+  const { toggleLike, toggleRepost, addComment, followUser, unfollowUser, isFollowing, followingLoading, followingError, deletePost, deleteReply, isBlocked, blockUser } = useSocial();
+  const [reporting, setReporting] = useState<ReportTarget | null>(null);
+  const [confirm, setConfirm] = useState<Confirm | null>(null);
+  const [deleted, setDeleted] = useState(false);
   const [isTipOpen, setIsTipOpen] = useState(false);
   const [showComments, setShowComments] = useState(initialCommentsOpen);
   const [commentInput, setCommentInput] = useState('');
@@ -112,7 +118,8 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
     ...sourcePost,
     likes: likeOverride ? [...(sourcePost.likes || []).filter(row => row.user_id !== likeOverride.userId), ...(likeOverride.active ? [{ user_id: likeOverride.userId }] : [])] : sourcePost.likes,
     reposts: repostOverride ? [...(sourcePost.reposts || []).filter(row => row.user_id !== repostOverride.userId), ...(repostOverride.active ? [{ user_id: repostOverride.userId }] : [])] : sourcePost.reposts,
-    replies: [...(sourcePost.replies || []), ...savedReplies.filter(reply => !sourcePost.replies?.some(row => row.id === reply.id))],
+    replies: [...(sourcePost.replies || []), ...savedReplies.filter(reply => !sourcePost.replies?.some(row => row.id === reply.id))]
+      .filter(reply => !isBlocked(reply.user_id)),
   };
   const isLiked = currentUser ? post.likes?.some(l => l.user_id === currentUser.id) : false;
   const isReposted = currentUser ? post.reposts?.some(r => r.user_id === currentUser.id) : false;
@@ -165,6 +172,31 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
   const displayName = displayUsername && displayUsername === post.profiles?.wallet_address ? shortWalletAddress(displayUsername) : displayUsername;
   const body = isRepost && post.repost_content ? post.repost_content : post.content;
 
+  const askDeletePost = () => setConfirm({
+    title: 'Delete this post?',
+    description: 'It disappears for everyone, along with its likes, reposts and replies. This can’t be undone.',
+    action: 'Delete',
+    run: async () => { await deletePost(post.id); setDeleted(true); showSuccess('Post deleted'); },
+  });
+  const askBlock = () => setConfirm({
+    title: `Block @${displayUsername}?`,
+    description: 'You won’t see their posts, and neither of you can follow, reply to, like or repost the other. You can unblock them from their profile.',
+    action: 'Block',
+    run: async () => { await blockUser(post.user_id); showSuccess(`@${displayUsername} is blocked`); },
+  });
+  const askDeleteReply = (reply: Reply) => setConfirm({
+    title: 'Delete this reply?',
+    description: 'It disappears for everyone. This can’t be undone.',
+    action: 'Delete',
+    run: async () => {
+      await deleteReply(post.id, reply.id);
+      setSavedReplies(previous => previous.filter(row => row.id !== reply.id));
+      showSuccess('Reply deleted');
+    },
+  });
+
+  if (deleted) return null;
+
   return (
     <article className="lune-spot lune-spot--soft px-4 md:px-6 py-4 hover:bg-white/[0.015] transition-colors">
       {(post.repostedBy || (isRepost && post.profiles?.username)) && (
@@ -202,13 +234,14 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
             <Link to={`/post/${post.id}`} aria-label="Open post and replies" className="shrink-0 text-sm text-white/35 hover:underline">
               <time dateTime={post.created_at} title={new Date(post.created_at).toLocaleString()}>{shortAgo(post.created_at)}</time>
             </Link>
+            <div className="ml-auto flex shrink-0 items-center gap-1">
             {!isOwnPost && currentUser && !isRepost && (
               <button
                 disabled={pending || followingLoading || !!followingError}
                 title={followingError || undefined}
                 onClick={() => handleAction(() => following ? unfollowUser(post.user_id) : followUser(post.user_id))}
                 className={cn(
-                  'ml-auto shrink-0 text-xs font-semibold h-7 px-3 rounded-full border transition-all disabled:opacity-50',
+                  'shrink-0 text-xs font-semibold h-7 px-3 rounded-full border transition-all disabled:opacity-50',
                   following
                     ? 'border-white/10 text-white/50 hover:text-red-300 hover:border-red-400/30'
                     : 'border-lune-400/40 text-lune-200 bg-lune-500/10 hover:bg-lune-500/20'
@@ -217,6 +250,26 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
                 {following ? 'Following' : 'Follow'}
               </button>
             )}
+            {currentUser && (
+              <DropdownMenu modal={false}>
+                <DropdownMenuTrigger asChild>
+                  <button aria-label="More options for this post" className="flex h-7 w-7 items-center justify-center rounded-full text-white/40 transition-colors hover:bg-white/10 hover:text-white">
+                    <MoreHorizontal size={16} />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {isOwnPost ? (
+                    <DropdownMenuItem className="text-red-300 focus:text-red-200" onSelect={askDeletePost}><Trash2 className="mr-2 h-4 w-4" />Delete post</DropdownMenuItem>
+                  ) : (
+                    <>
+                      <DropdownMenuItem onSelect={() => setReporting({ type: 'post', id: post.id, label: `Post by @${displayUsername}` })}><Flag className="mr-2 h-4 w-4" />Report post</DropdownMenuItem>
+                      <DropdownMenuItem className="text-red-300 focus:text-red-200" onSelect={askBlock}><Ban className="mr-2 h-4 w-4" />Block @{displayUsername}</DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            </div>
           </div>
 
           <p className="selectable mt-1 text-[15px] text-white/85 leading-relaxed whitespace-pre-wrap break-words">
@@ -283,6 +336,13 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
                         </button>
                         <VerifiedBadge username={reply.profiles?.username} />
                         <span className="text-white/30">{shortAgo(reply.created_at)}</span>
+                        {currentUser && (
+                          reply.user_id === currentUser.id ? (
+                            <button onClick={() => askDeleteReply(reply)} aria-label="Delete your reply" title="Delete reply" className="ml-auto text-white/30 hover:text-red-300"><Trash2 size={13} /></button>
+                          ) : (
+                            <button onClick={() => setReporting({ type: 'reply', id: reply.id, label: `Reply by @${reply.profiles?.username}` })} aria-label="Report this reply" title="Report reply" className="ml-auto text-white/30 hover:text-amber-300"><Flag size={13} /></button>
+                          )
+                        )}
                       </div>
                       <p className="selectable whitespace-pre-wrap text-sm text-white/70 leading-relaxed break-words">{reply.content}</p>
                     </div>
@@ -322,6 +382,8 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
       </div>
 
       <TipModal isOpen={isTipOpen} onClose={() => setIsTipOpen(false)} recipient={displayUsername || 'Anonymous'} />
+      {reporting && <ReportDialog target={reporting} onClose={() => setReporting(null)} />}
+      {confirm && <ConfirmDialog confirm={confirm} onClose={() => setConfirm(null)} />}
     </article>
   );
 };

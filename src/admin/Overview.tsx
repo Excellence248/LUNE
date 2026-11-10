@@ -10,6 +10,7 @@ const TILES: { key: keyof Totals; label: string; hint?: (totals: Totals) => stri
   { key: 'likes', label: 'Likes' },
   { key: 'reposts', label: 'Reposts' },
   { key: 'follows', label: 'Follows' },
+  { key: 'open_reports', label: 'Open reports' },
   { key: 'suspended', label: 'Suspended members' },
   { key: 'admins', label: 'Admins' },
 ];

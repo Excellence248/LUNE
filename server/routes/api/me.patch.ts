@@ -1,6 +1,7 @@
 import { defineHandler } from 'nitro';
 import { HTTPError, readBody } from 'nitro/h3';
 import { requirePermission } from '../../utils/auth';
+import { rateLimit } from '../../utils/limits';
 import { sql } from '../../utils/db';
 
 interface Changes { username?: unknown; bio?: unknown; avatar_url?: unknown }
@@ -9,6 +10,7 @@ interface Changes { username?: unknown; bio?: unknown; avatar_url?: unknown }
 // or an inline data URL (up to ~2 MB, as the profile editor produces).
 export default defineHandler(async (event) => {
   const me = await requirePermission(event, 'profile.edit_own');
+  await rateLimit('profile', me.id);
   const body = ((await readBody<Changes>(event)) ?? {}) as Changes;
   const username = typeof body.username === 'string' ? body.username.trim() : me.username;
   const bio = typeof body.bio === 'string' ? body.bio : me.bio;

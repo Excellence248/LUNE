@@ -80,7 +80,7 @@ const Members = ({ can }: { can: (permission: string) => boolean }) => {
                 </TableCell>
                 <TableCell className="text-right">
                   {(can('badge.grant') || (can('member.suspend') && !member.is_admin)) && (
-                    <DropdownMenu>
+                    <DropdownMenu modal={false}>
                       <DropdownMenuTrigger asChild>
                         <Button size="icon" variant="ghost" aria-label={`Manage @${member.username}`}><MoreHorizontal className="h-4 w-4" /></Button>
                       </DropdownMenuTrigger>

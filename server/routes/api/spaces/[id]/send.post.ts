@@ -1,6 +1,7 @@
 import { defineHandler } from 'nitro';
 import { HTTPError, readBody } from 'nitro/h3';
 import { requireViewer } from '../../../../utils/auth';
+import { rateLimit } from '../../../../utils/limits';
 import { sql } from '../../../../utils/db';
 import { boundedJson, spaceParam } from '../../../../utils/spaces';
 
@@ -10,6 +11,7 @@ interface Body { event?: unknown; to?: unknown; payload?: unknown }
 export default defineHandler(async (event) => {
   const space = spaceParam(event);
   const { profile } = await requireViewer(event);
+  await rateLimit('spaceSend', profile.id);
   const body = ((await readBody<Body>(event)) ?? {}) as Body;
   if (body.event !== 'signal' && body.event !== 'control') throw new HTTPError('Unknown event', { status: 400 });
   const to = typeof body.to === 'string' && /^[0-9a-f-]{36}$/i.test(body.to) ? body.to : null;

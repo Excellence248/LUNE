@@ -61,6 +61,13 @@ export interface Notification {
   actor_profile?: { username: string; avatar_url: string };
 }
 
+/** Something a member can report: a post, a reply or a profile. `label` describes it in the dialog. */
+export interface ReportTarget {
+  type: 'post' | 'reply' | 'profile';
+  id: string;
+  label?: string;
+}
+
 interface SocialContextType {
   posts: Post[];
   notifications: Notification[];
@@ -94,6 +101,12 @@ interface SocialContextType {
   followingError: string | null;
   refreshFollowing: () => Promise<void>;
   markNotificationsAsRead: (ids?: string[]) => Promise<void>;
+  deletePost: (postId: string) => Promise<void>;
+  deleteReply: (postId: string, replyId: string) => Promise<void>;
+  report: (target: ReportTarget, reason: string, details: string) => Promise<void>;
+  isBlocked: (profileId: string) => boolean;
+  blockUser: (profileId: string) => Promise<void>;
+  unblockUser: (profileId: string) => Promise<void>;
 }
 
 const SocialContext = createContext<SocialContextType | undefined>(undefined);
@@ -111,6 +124,7 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
   } = useAccountNotifications(userId);
   const [posts, setPosts] = useState<Post[]>([]);
   const [followingIds, setFollowingIds] = useState<string[]>([]);
+  const [blockedIds, setBlockedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [feedError, setFeedError] = useState<string | null>(null);
   // Neon has no change stream: the feed polls, so the status reads "Auto-refresh".
@@ -181,6 +195,14 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
     const interval = setInterval(fetchFollowing, 30000);
     return () => { followingRequest.current += 1; clearInterval(interval); };
   }, [userId, fetchFollowing]);
+
+  useEffect(() => {
+    setBlockedIds([]);
+    if (!userId) return;
+    let active = true;
+    api<string[]>('/api/me/blocks').then(ids => { if (active && currentUserId.current === userId) setBlockedIds(ids); }).catch(() => undefined);
+    return () => { active = false; };
+  }, [userId]);
 
   const loadMore = async () => {
     if (loadingMoreRef.current || !hasMore) return;
@@ -288,6 +310,36 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const deletePost = async (postId: string) => {
+    requireAccount();
+    await api(`/api/posts/${postId}`, { method: 'DELETE' });
+    requestNumber.current += 1;
+    setPosts(previous => previous.filter(post => post.id !== postId));
+    await fetchPosts();
+  };
+
+  const deleteReply = async (postId: string, replyId: string) => {
+    requireAccount();
+    await api(`/api/replies/${replyId}`, { method: 'DELETE' });
+    requestNumber.current += 1;
+    setPosts(previous => previous.map(post => post.id === postId ? { ...post, replies: (post.replies || []).filter(reply => reply.id !== replyId) } : post));
+    await fetchPosts();
+  };
+
+  const report = async (target: ReportTarget, reason: string, details: string) => {
+    requireAccount();
+    await api('/api/reports', { method: 'POST', body: { target_type: target.type, target_id: target.id, reason, details } });
+  };
+
+  const setBlocked = async (profileId: string, active: boolean) => {
+    const author = requireAccount();
+    await api(`/api/blocks/${profileId}`, { method: 'POST', body: { active } });
+    if (currentUserId.current !== author) return;
+    setBlockedIds(previous => active ? [...previous.filter(id => id !== profileId), profileId] : previous.filter(id => id !== profileId));
+    // Blocking ends follows both ways.
+    if (active) setFollowingIds(previous => previous.filter(id => id !== profileId));
+  };
+
   const searchUsers = useCallback(async (query: string): Promise<PublicProfile[]> => {
     const term = query.trim().replace(/^@/, '');
     if (!/^[A-Za-z0-9_]{1,64}$/.test(term)) return [];
@@ -300,7 +352,8 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <SocialContext.Provider value={{
-      posts, notifications, unreadCount,
+      // Posts from members you blocked are hidden everywhere the feed is shown.
+      posts: blockedIds.length ? posts.filter(post => !blockedIds.includes(post.user_id)) : posts, notifications, unreadCount,
       loading, feedError, liveStatus, hasMore, loadingMore, loadMore,
       notificationsLoading, notificationsError, notificationsReady,
       notificationsHasMore, notificationsLoadingMore, markingNotificationsRead,
@@ -309,6 +362,9 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
       addComment, followUser, unfollowUser, isFollowing: targetUserId => followingIds.includes(targetUserId),
       followingCount: followingIds.length, followingLoading, followingError, refreshFollowing: fetchFollowing,
       searchUsers, getProfileByUsername, markNotificationsAsRead,
+      deletePost, deleteReply, report,
+      isBlocked: profileId => blockedIds.includes(profileId),
+      blockUser: profileId => setBlocked(profileId, true), unblockUser: profileId => setBlocked(profileId, false),
     }}>
       {children}
     </SocialContext.Provider>

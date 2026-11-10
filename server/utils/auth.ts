@@ -31,7 +31,7 @@ export const getViewer = async (event: H3Event): Promise<Viewer | null> => {
     const profile = profileColumns(await sql`
       select p.id, p.username, p.bio, public.avatar_src(p) as avatar_url, p.wallet_address
       from public.profiles p where p.id = ${wallet.profileId} and p.wallet_address = ${wallet.wallet}`);
-    if (profile) return { kind: 'wallet', email: null, emailVerified: false, profile };
+    if (profile?.id) return { kind: 'wallet', email: null, emailVerified: false, profile };
   }
 
   const cookie = event.req.headers.get('cookie');
@@ -45,7 +45,8 @@ export const getViewer = async (event: H3Event): Promise<Viewer | null> => {
   const profile = profileColumns(await sql`
     select p.id, p.username, p.bio, public.avatar_src(p) as avatar_url, p.wallet_address
     from public.ensure_email_profile(${id}, ${email}, ${emailVerified}) p`);
-  return profile ? { kind: 'email', email, emailVerified, profile } : null;
+  // A deleted account's cached session resolves to no profile.
+  return profile?.id ? { kind: 'email', email, emailVerified, profile } : null;
 };
 
 /** Returns the caller, or throws 401 when nobody is signed in. */

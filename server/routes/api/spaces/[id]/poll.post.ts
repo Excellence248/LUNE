@@ -1,6 +1,7 @@
 import { defineHandler } from 'nitro';
 import { HTTPError, readBody } from 'nitro/h3';
 import { requireViewer } from '../../../../utils/auth';
+import { rateLimit } from '../../../../utils/limits';
 import { sql } from '../../../../utils/db';
 import { boundedJson, spaceParam } from '../../../../utils/spaces';
 
@@ -14,6 +15,7 @@ interface Body { meta?: Record<string, unknown>; lobby?: Record<string, unknown>
 export default defineHandler(async (event) => {
   const space = spaceParam(event);
   const { profile } = await requireViewer(event);
+  await rateLimit('spacePoll', profile.id);
   const body = ((await readBody<Body>(event)) ?? {}) as Body;
   const after = Number.isSafeInteger(body.after) ? (body.after as number) : 0;
   const wantsHost = body.meta?.role === 'host';

@@ -62,11 +62,30 @@ export interface Overview {
   likes: number;
   reposts: number;
   follows: number;
+  open_reports: number;
+}
+
+export interface AdminReport {
+  id: string;
+  target_type: 'post' | 'reply' | 'profile';
+  target_id: string;
+  target_profile_id: string | null;
+  target_username: string | null;
+  reporter_username: string | null;
+  reason: string;
+  details: string;
+  status: 'open' | 'resolved' | 'dismissed';
+  created_at: string;
+  resolved_at: string | null;
+  content: string | null;
+  image_url: string | null;
+  removed: boolean;
+  open_reports: number;
 }
 
 export interface AuditEntry {
   id: string;
-  action: 'suspend' | 'reinstate' | 'remove_post' | 'remove_reply' | 'grant_badge' | 'revoke_badge';
+  action: 'suspend' | 'reinstate' | 'remove_post' | 'remove_reply' | 'grant_badge' | 'revoke_badge' | 'resolve_report' | 'dismiss_report';
   reason: string;
   details: { content?: string; expires_at?: string | null; tier?: BadgeTier | null };
   created_at: string;

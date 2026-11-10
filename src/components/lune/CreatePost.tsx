@@ -29,8 +29,8 @@ const CreatePost = () => {
   const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type) || file.size > 5 * 1024 * 1024) {
-        showError('Choose a JPG, PNG, WebP, or GIF image up to 5MB.');
+      if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type) || file.size > 4 * 1024 * 1024) {
+        showError('Choose a JPG, PNG, WebP, or GIF image up to 4MB.');
       } else setImage(file);
     }
     event.target.value = '';

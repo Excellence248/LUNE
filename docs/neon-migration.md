@@ -5,7 +5,7 @@ site's own server routes (Nitro, deployed to Vercel). The browser only ever call
 
 ## Status (2026-11-10)
 
-- **Schema:** every file in `neon/migrations/` has been applied, in this order: `initial_schema`, `profile_stats_and_roles`, `app_cutover`, `api_functions`, `legacy_rows`. Each was tested against the live database inside a rolled-back transaction first. Add changes as new files; never edit an applied one.
+- **Schema:** every file in `neon/migrations/` has been applied, in this order: `initial_schema`, `profile_stats_and_roles`, `app_cutover`, `api_functions`, `legacy_rows`, `safety`. Each was tested against the live database inside a rolled-back transaction first. Add changes as new files; never edit an applied one.
 - **Data copied from Supabase:** everything the public key could read: 2 profiles, 5 posts, 5 likes, 1 repost, 2 follows (and 0 replies). Row counts matched. The usernames `Sammy🐳` and `Excellence@248` became `Sammy` and `Excellence_248`, because Neon allows only letters, numbers and underscores. Profile IDs are unchanged.
 - **Not yet copied:** rows the public key cannot see: notifications, crypto orders, the unused `messages` table, and the account emails in Supabase Auth. Run the importer below to copy them. Passwords cannot be moved, so everyone sets a new one.
 - **Code:** `@supabase/*` packages, the Supabase client, the `supabase/` folder (migrations and the `crypto-payments` edge function, now `/api/payments`) and the `VITE_SUPABASE_*` variables are gone.
@@ -44,6 +44,15 @@ In the Neon Console, under Auth, add the site's domains as trusted domains. Conf
 - **Spaces.** WebRTC audio is unchanged, but connection messages travel through `/api/spaces/:id/poll` and `/send` about once a second instead of Supabase Realtime. The server stamps who sent each message and allows one host per space, so neither can be faked.
 - **Payments.** `/api/payments` checks the transaction on-chain, then `confirm_crypto_order` marks the order paid and extends the badge in one transaction. A transaction signature can pay for only one order.
 - **Notifications** are created by database triggers on likes, reposts, replies and follows, and never for your own activity.
+
+## Member safety
+
+- **Delete:** members delete their own posts and replies from the ⋯ menu (`DELETE /api/posts/:id`, `DELETE /api/replies/:id`), and their whole account from their profile page (`POST /api/me/delete`, confirmed by typing their username). Account deletion removes the profile, everything in it, and the Neon Auth sign-in. Reports and admin history about them are kept. Admin accounts can only be removed by the database owner.
+- **Report:** posts, replies and accounts can be reported with a reason (`POST /api/reports`), at most one open report per member per target. Admins work through them in the panel's **Reports** tab: remove the content, suspend the member, resolve or dismiss. Removing content closes its open reports, and every decision goes in the audit log.
+- **Block:** blocking (`POST /api/blocks/:id`) hides the blocked member's posts and replies from you and ends follows both ways. Database triggers stop either member from following, replying to, liking or reposting the other. Blocking still works while suspended.
+- **Rate limits** (`server/utils/limits.ts`, counted in `rate_limits`): per member, 10 posts and 30 replies per 10 minutes, 120 likes or reposts, 60 follows, 20 reports and 20 image uploads per hour. Per IP: 5 sign-ups and 5 auth emails per hour, 20 sign-in attempts per 10 minutes. Over the limit, the API answers 429.
+- **Images:** each member may store up to 100 MB. Uploaded images that never end up in a post or avatar are deleted after a day.
+- **Crashes:** an error boundary (`src/components/ErrorBoundary.tsx`) shows a "Something went wrong — Reload" screen instead of a blank page, for both the app and the admin panel.
 
 ## Profile stats
 

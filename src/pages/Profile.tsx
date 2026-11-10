@@ -5,6 +5,7 @@ import Layout from '@/components/lune/Layout';
 import ProfileHero from '@/components/lune/ProfileHero';
 import ProfileEditor from '@/components/lune/ProfileEditor';
 import ProfileActivity from '@/components/lune/ProfileActivity';
+import DeleteAccount from '@/components/lune/DeleteAccount';
 import { EmptyState } from '@/components/lune/Brand';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -80,6 +81,7 @@ const Profile = () => {
               <p className="break-all font-mono text-xs leading-6 text-white/70">{user.email || user.walletAddress}</p>
             </div>
             <p className="border-t border-white/10 pt-4 text-xs leading-relaxed text-white/40">Your username, photo, and bio are public and can be changed with Edit profile. Your email is never shown on your public profile.</p>
+            <div className="border-t border-white/10 pt-4"><DeleteAccount /></div>
           </aside>
         </div>
       </div>

@@ -9,6 +9,7 @@ import AuditLog from './AuditLog';
 import Content from './Content';
 import Members from './Members';
 import Overview from './Overview';
+import Reports from './Reports';
 import { ApiError, api, type AdminMe } from './api';
 
 type State =
@@ -145,11 +146,13 @@ const AdminApp = () => {
           <Tabs defaultValue="overview" className="space-y-5">
             <TabsList className="flex h-auto w-full justify-start overflow-x-auto sm:inline-flex sm:w-auto">
               <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="reports">Reports</TabsTrigger>
               <TabsTrigger value="members">Members</TabsTrigger>
               <TabsTrigger value="content">Content</TabsTrigger>
               {can('audit.read') && <TabsTrigger value="audit">Audit log</TabsTrigger>}
             </TabsList>
             <TabsContent value="overview"><Overview /></TabsContent>
+            <TabsContent value="reports"><Reports can={can} /></TabsContent>
             <TabsContent value="members"><Members can={can} /></TabsContent>
             <TabsContent value="content"><Content canRemove={can('content.remove_any')} /></TabsContent>
             {can('audit.read') && <TabsContent value="audit"><AuditLog /></TabsContent>}

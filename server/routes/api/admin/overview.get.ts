@@ -15,6 +15,7 @@ export default defineHandler(async (event) => {
       (select count(*) from public.replies)::int as replies,
       (select count(*) from public.likes)::int as likes,
       (select count(*) from public.reposts)::int as reposts,
-      (select count(*) from public.follows)::int as follows`;
+      (select count(*) from public.follows)::int as follows,
+      (select count(*) from public.reports where status = 'open')::int as open_reports`;
   return totals;
 });

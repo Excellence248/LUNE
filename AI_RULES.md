@@ -29,3 +29,5 @@
 - Members need the matching permission (post.create, post.react, reply.create, profile.follow, profile.edit_own) for every write; suspended members have none.
 - The feed, posts, and public profiles remain readable by guests. Personal profiles and notifications require authentication.
 - Images are stored in Neon (media table, max 4 MB, served from /api/media/:id); inline avatars are served from /api/avatars/:id.
+- Every new write route calls rateLimit() from server/utils/limits.ts (add a LIMITS entry). Blocks are enforced by database triggers; map their 42501 errors to 403.
+- Open dialogs from dropdown menus only with <DropdownMenu modal={false}>; a modal menu leaves the page unclickable after the dialog closes.

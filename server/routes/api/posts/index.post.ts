@@ -1,11 +1,13 @@
 import { defineHandler } from 'nitro';
 import { HTTPError, readBody } from 'nitro/h3';
 import { requirePermission } from '../../../utils/auth';
+import { rateLimit } from '../../../utils/limits';
 import { sql } from '../../../utils/db';
 
 // Body: { content, image_url? } where image_url is an image the caller uploaded to /api/media.
 export default defineHandler(async (event) => {
   const me = await requirePermission(event, 'post.create');
+  await rateLimit('post', me.id);
   const body = ((await readBody<{ content?: unknown; image_url?: unknown }>(event)) ?? {}) as { content?: unknown; image_url?: unknown };
   const content = typeof body.content === 'string' ? body.content.trim() : '';
   const image = typeof body.image_url === 'string' ? body.image_url : null;

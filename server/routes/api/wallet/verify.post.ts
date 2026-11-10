@@ -1,5 +1,6 @@
 import { defineHandler } from 'nitro';
 import { HTTPError, readBody, setCookie } from 'nitro/h3';
+import { clientIp, rateLimit } from '../../../utils/limits';
 import { sql } from '../../../utils/db';
 import { SESSION_DAYS, WALLET_COOKIE, checkSignature, createWalletSession, isWalletAddress } from '../../../utils/wallet';
 
@@ -7,6 +8,7 @@ interface Body { address?: unknown; nonce?: unknown; signature?: unknown }
 
 // Body: { address, nonce, signature (base64) }. Signs the wallet in and returns its profile.
 export default defineHandler(async (event) => {
+  await rateLimit('walletVerify', clientIp(event));
   const { address, nonce, signature } = ((await readBody<Body>(event)) ?? {}) as Body;
   if (!isWalletAddress(address) || typeof nonce !== 'string' || typeof signature !== 'string') throw new HTTPError('Invalid sign-in request.', { status: 400 });
   const result = checkSignature(address, nonce, signature, event.req.headers.get('host') ?? 'lune');
