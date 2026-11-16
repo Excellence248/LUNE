@@ -7,7 +7,7 @@ export default defineHandler(async (event) => {
   const username = getRouterParam(event, 'username', { decode: true }) ?? '';
   if (!username || username.length > 64) throw new HTTPError('Profile not found', { status: 404 });
   const [profile] = await sql`
-    select p.id, p.username, p.bio, public.avatar_src(p) as avatar_url, p.wallet_address, p.created_at,
+    select p.id, p.username, p.display_name, p.bio, public.avatar_src(p) as avatar_url, p.cover_url, p.wallet_address, p.created_at,
       to_jsonb(s) - 'profile_id' as stats,
       b.tier as badge,
       public.is_suspended(p.id) as suspended

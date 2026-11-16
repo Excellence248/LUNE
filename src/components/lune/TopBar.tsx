@@ -20,7 +20,7 @@ import { useWallet } from '@/context/WalletContext';
 import { useSocial } from '@/context/SocialContext';
 import { Link, useNavigate } from 'react-router-dom';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { shortWalletAddress } from '@/lib/solana-wallet';
+import { displayNameOf } from '@/lib/names';
 import { showError } from '@/utils/toast';
 
 const iconBtn =
@@ -32,7 +32,7 @@ const TopBar = () => {
   const { isAuthenticated, user, disconnect } = useWallet();
   const { unreadCount } = useSocial();
 
-  const displayName = user ? (user.walletAddress && user.username === user.walletAddress ? shortWalletAddress(user.walletAddress) : user.username) : 'Account';
+  const displayName = user ? displayNameOf(user) : 'Account';
 
   return (
     <header className="h-[calc(4rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] lg:h-[72px] lg:pt-0 glass-bar border-b sticky top-0 z-40 px-3 md:px-6 lg:px-10 flex items-center justify-between gap-3">

@@ -1,5 +1,5 @@
 import { useRef, useState, type ChangeEvent, type FormEvent } from 'react';
-import { Camera, Edit3, Loader2 } from 'lucide-react';
+import { Camera, Edit3, ImagePlus, Loader2 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useWallet } from '@/context/WalletContext';
+import { uploadImage } from '@/lib/api';
 import { showSuccess } from '@/utils/toast';
 
 const ProfileEditor = () => {
@@ -15,17 +16,19 @@ const ProfileEditor = () => {
   const [saving, setSaving] = useState(false);
   const [readingImage, setReadingImage] = useState(false);
   const [error, setError] = useState('');
-  const [draft, setDraft] = useState({ username: '', bio: '', avatar: '' });
+  const [uploadingCover, setUploadingCover] = useState(false);
+  const [draft, setDraft] = useState({ username: '', displayName: '', bio: '', avatar: '', cover: '' });
   const fileInput = useRef<HTMLInputElement>(null);
+  const coverInput = useRef<HTMLInputElement>(null);
   const savingRef = useRef(false);
 
   if (!user) return null;
-  const busy = saving || readingImage;
+  const busy = saving || readingImage || uploadingCover;
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (busy) return;
     if (nextOpen) {
-      setDraft({ username: user.username, bio: user.bio, avatar: user.avatar });
+      setDraft({ username: user.username, displayName: user.displayName, bio: user.bio, avatar: user.avatar, cover: user.cover });
       setError('');
     }
     setOpen(nextOpen);
@@ -58,6 +61,30 @@ const ProfileEditor = () => {
     reader.readAsDataURL(file);
   };
 
+  const handleCoverSelect = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type)) {
+      setError('Choose a JPG, PNG, WebP, or GIF image for your cover.');
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      setError('Your cover picture must be 4 MB or smaller.');
+      return;
+    }
+    setError('');
+    setUploadingCover(true);
+    try {
+      const cover = await uploadImage(file);
+      setDraft(previous => ({ ...previous, cover }));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Your cover picture could not be uploaded. Please try again.');
+    } finally {
+      setUploadingCover(false);
+    }
+  };
+
   const handleSave = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (savingRef.current || readingImage) return;
@@ -65,7 +92,7 @@ const ProfileEditor = () => {
     savingRef.current = true;
     setSaving(true);
     try {
-      await updateProfile({ ...draft, username: draft.username.trim() });
+      await updateProfile({ ...draft, username: draft.username.trim(), displayName: draft.displayName.trim() });
       setOpen(false);
       showSuccess('Profile updated!');
     } catch (cause) {
@@ -86,10 +113,24 @@ const ProfileEditor = () => {
       <DialogContent className="max-h-[90dvh] overflow-y-auto rounded-3xl border-white/10 glass-strong text-white sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="font-display text-2xl">Make it yours</DialogTitle>
-          <DialogDescription>Your avatar, handle, and bio are visible on your public profile.</DialogDescription>
+          <DialogDescription>Your name, photo, cover, handle, and bio are visible on your public profile.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSave} className="space-y-6 pt-2" aria-busy={busy}>
           <fieldset disabled={busy} className="space-y-6 disabled:opacity-70">
+            <div className="space-y-2">
+              <Label>Cover picture</Label>
+              <button type="button" onClick={() => coverInput.current?.click()} aria-label="Choose cover picture" className="group relative flex h-28 w-full items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-lune-900 to-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lune-400">
+                {draft.cover && <img src={draft.cover} alt="" className="absolute inset-0 h-full w-full object-cover" />}
+                <span className="relative flex items-center gap-2 rounded-full bg-black/55 px-3 py-1.5 text-xs font-medium text-white backdrop-blur transition-colors group-hover:bg-black/70">
+                  {uploadingCover ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}{uploadingCover ? 'Uploading…' : draft.cover ? 'Change cover' : 'Add a cover picture'}
+                </span>
+              </button>
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-white/40">JPG, PNG, WebP, or GIF · max 4 MB · wide images look best</p>
+                {draft.cover && <button type="button" onClick={() => setDraft(previous => ({ ...previous, cover: '' }))} className="text-xs text-white/50 hover:text-white">Remove cover</button>}
+              </div>
+              <input ref={coverInput} type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={handleCoverSelect} className="hidden" />
+            </div>
             <div className="flex items-center gap-5 rounded-2xl border border-white/10 glass-soft p-4">
               <button type="button" onClick={() => fileInput.current?.click()} aria-label="Choose profile avatar" className="group relative shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lune-400">
                 <Avatar className="h-20 w-20 ring-2 ring-lune-400/30">
@@ -106,9 +147,14 @@ const ProfileEditor = () => {
               <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={handleImageSelect} className="hidden" />
             </div>
             <div className="space-y-2">
+              <div className="flex items-center justify-between"><Label htmlFor="profile-display-name">Name</Label><span className="text-xs tabular-nums text-white/40">{draft.displayName.length}/50</span></div>
+              <Input id="profile-display-name" value={draft.displayName} onChange={event => setDraft(previous => ({ ...previous, displayName: event.target.value }))} maxLength={50} placeholder={user.username} autoComplete="name" aria-describedby="display-name-help" className="h-12 border-white/10 glass-soft" />
+              <p id="display-name-help" className="text-xs text-white/40">The name shown as you on posts and your profile. It doesn’t have to be unique.</p>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="profile-username">Username</Label>
               <Input id="profile-username" value={draft.username} onChange={event => setDraft(previous => ({ ...previous, username: event.target.value }))} required minLength={3} maxLength={64} pattern="[A-Za-z0-9_]{3,64}" aria-describedby="username-help" autoComplete="username" className="h-12 border-white/10 glass-soft" />
-              <p id="username-help" className="text-xs text-white/40">3–64 letters, numbers, or underscores. Must be unique.</p>
+              <p id="username-help" className="text-xs text-white/40">Your @handle: 3–64 letters, numbers, or underscores. Must be unique.</p>
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between"><Label htmlFor="profile-bio">Bio</Label><span className="text-xs tabular-nums text-white/40">{draft.bio.length}/500</span></div>
@@ -119,7 +165,7 @@ const ProfileEditor = () => {
           <div className="flex justify-end gap-3 border-t border-white/10 pt-4">
             <Button type="button" variant="ghost" disabled={busy} onClick={() => setOpen(false)}>Cancel</Button>
             <Button type="submit" disabled={busy} className="rounded-full bg-lune-500 px-6 text-white hover:bg-lune-600">
-              {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{saving ? 'Saving…' : readingImage ? 'Reading image…' : 'Save changes'}
+              {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{saving ? 'Saving…' : readingImage ? 'Reading image…' : uploadingCover ? 'Uploading cover…' : 'Save changes'}
             </Button>
           </div>
         </form>

@@ -1,5 +1,5 @@
 import VerifiedBadge from '@/components/lune/VerifiedBadge';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import type { ProfileStats } from '@/context/SocialContext';
 
@@ -17,6 +17,8 @@ interface ProfileHeroProps {
   handle?: string;
   subtitle?: string;
   avatarUrl?: string;
+  /** Profile banner image; the default night sky shows when empty or if it fails to load. */
+  coverUrl?: string;
   bio?: string;
   actions?: React.ReactNode;
   footnote?: React.ReactNode;
@@ -24,13 +26,23 @@ interface ProfileHeroProps {
 }
 
 /** Cover + identity block shared by the own-profile and public-profile pages. */
-const ProfileHero = ({ name, handle, subtitle, avatarUrl, bio, actions, footnote, stats }: ProfileHeroProps) => (
+const ProfileHero = ({ name, handle, subtitle, avatarUrl, coverUrl, bio, actions, footnote, stats }: ProfileHeroProps) => {
+  const [coverFailed, setCoverFailed] = useState(false);
+  useEffect(() => { setCoverFailed(false); }, [coverUrl]);
+  const cover = coverUrl && !coverFailed ? coverUrl : '';
+  return (
   <section>
     <div className="relative h-40 md:h-56 overflow-hidden border-b border-white/[0.06]">
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_70%_120%,hsl(271_91%_55%/0.55),transparent_55%),radial-gradient(ellipse_at_10%_-20%,hsl(250_90%_50%/0.35),transparent_50%),linear-gradient(180deg,hsl(262_50%_8%),hsl(260_40%_4%))]" />
-      <div className="absolute inset-0 lune-stars opacity-80" />
-      {/* moonrise */}
-      <div className="absolute -bottom-40 right-[8%] h-64 w-64 md:h-80 md:w-80 rounded-full bg-gradient-to-b from-lune-200/50 to-lune-500/10 blur-[2px] shadow-[0_0_120px_40px_rgba(145,71,245,0.35)]" />
+      {cover ? (
+        <img src={cover} alt="" onError={() => setCoverFailed(true)} className="absolute inset-0 h-full w-full object-cover" />
+      ) : (
+        <>
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_70%_120%,hsl(271_91%_55%/0.55),transparent_55%),radial-gradient(ellipse_at_10%_-20%,hsl(250_90%_50%/0.35),transparent_50%),linear-gradient(180deg,hsl(262_50%_8%),hsl(260_40%_4%))]" />
+          <div className="absolute inset-0 lune-stars opacity-80" />
+          {/* moonrise */}
+          <div className="absolute -bottom-40 right-[8%] h-64 w-64 md:h-80 md:w-80 rounded-full bg-gradient-to-b from-lune-200/50 to-lune-500/10 blur-[2px] shadow-[0_0_120px_40px_rgba(145,71,245,0.35)]" />
+        </>
+      )}
       <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-background to-transparent" />
     </div>
 
@@ -47,7 +59,7 @@ const ProfileHero = ({ name, handle, subtitle, avatarUrl, bio, actions, footnote
 
       <div className="mt-4 space-y-3">
         <div>
-          <h1 className="break-all text-2xl md:text-3xl font-bold">{name} <VerifiedBadge username={handle} /></h1>
+          <h1 className="break-words text-2xl md:text-3xl font-bold">{name} <VerifiedBadge username={handle} /></h1>
           {handle && <p className="break-all text-white/40 text-sm">@{handle}</p>}
           {subtitle && <p className="break-all text-white/40 text-sm font-mono">{subtitle}</p>}
         </div>
@@ -70,6 +82,7 @@ const ProfileHero = ({ name, handle, subtitle, avatarUrl, bio, actions, footnote
       </div>
     </div>
   </section>
-);
+  );
+};
 
 export default ProfileHero;

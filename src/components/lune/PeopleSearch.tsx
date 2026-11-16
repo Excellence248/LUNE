@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useSocial, type PublicProfile } from '@/context/SocialContext';
+import { displayNameOf } from '@/lib/names';
 
 const SearchField = ({ onNavigate, autoFocus = false }: { onNavigate?: () => void; autoFocus?: boolean }) => {
   const { searchUsers } = useSocial();
@@ -68,7 +69,7 @@ const SearchField = ({ onNavigate, autoFocus = false }: { onNavigate?: () => voi
         onFocus={() => setOpen(true)}
         placeholder="Search people…"
         role="combobox"
-        aria-label="Search people by username"
+        aria-label="Search people by name or username"
         aria-autocomplete="list"
         aria-expanded={open && !!term}
         aria-controls={listId}
@@ -94,8 +95,8 @@ const SearchField = ({ onNavigate, autoFocus = false }: { onNavigate?: () => voi
           <div id={listId} role="listbox" aria-label="People search results">
             {results.map((result, index) => (
               <button key={result.id} id={`${listId}-${result.id}`} role="option" aria-selected={index === activeIndex} onMouseEnter={() => setActiveIndex(index)} onClick={() => selectUser(result.username)} className={`flex w-full items-center gap-3 rounded-xl p-2.5 text-left transition-colors hover:bg-white/[0.05] ${index === activeIndex ? 'glass-soft' : ''}`}>
-                <Avatar className="h-9 w-9 shrink-0 ring-1 ring-white/10"><AvatarImage src={result.avatar_url} /><AvatarFallback className="bg-lune-900 text-xs text-lune-200">{result.username[0]?.toUpperCase() || 'U'}</AvatarFallback></Avatar>
-                <div className="min-w-0"><p className="truncate text-sm font-semibold">{result.username} <VerifiedBadge username={result.username} /></p><p className="truncate text-xs text-white/40">@{result.username}</p></div>
+                <Avatar className="h-9 w-9 shrink-0 ring-1 ring-white/10"><AvatarImage src={result.avatar_url} /><AvatarFallback className="bg-lune-900 text-xs text-lune-200">{displayNameOf(result)[0]?.toUpperCase() || 'U'}</AvatarFallback></Avatar>
+                <div className="min-w-0"><p className="truncate text-sm font-semibold">{displayNameOf(result)} <VerifiedBadge username={result.username} /></p><p className="truncate text-xs text-white/40">@{result.username}</p></div>
               </button>
             ))}
           </div>

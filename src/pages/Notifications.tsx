@@ -1,3 +1,4 @@
+import { displayNameOf } from '@/lib/names';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Bell, CheckCheck, Heart, Loader2, MessageSquare, RefreshCw, Repeat2, UserPlus } from 'lucide-react';
@@ -76,7 +77,7 @@ const NotificationList = () => {
                   <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full glass-strong ring-2 ring-background">{getIcon(notif.type)}</span>
                 </Link>
                 <div className="min-w-0 flex-1 pt-0.5">
-                  <p className="break-words text-[15px] leading-snug text-white/70"><Link to={profilePath} className="font-semibold text-white hover:underline">@{notif.actor_profile?.username || 'Someone'}</Link>{' '}<Link to={activityPath} className="hover:text-white hover:underline">{getMessage(notif.type)}</Link></p>
+                  <p className="break-words text-[15px] leading-snug text-white/70"><Link to={profilePath} className="font-semibold text-white hover:underline">{notif.actor_profile ? displayNameOf(notif.actor_profile, 'Someone') : 'Someone'}</Link>{' '}<Link to={activityPath} className="hover:text-white hover:underline">{getMessage(notif.type)}</Link></p>
                   <time dateTime={notif.created_at} className="mt-1 block text-xs text-white/35">{formatDistanceToNow(new Date(notif.created_at), { addSuffix: true })}</time>
                 </div>
               </motion.div>

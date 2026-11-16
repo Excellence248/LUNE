@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useWallet } from '@/context/WalletContext';
 import { useSocial, type ProfileStats } from '@/context/SocialContext';
+import { displayNameOf } from '@/lib/names';
 
 const Profile = () => {
   const { user, loading, authError, refreshProfile } = useWallet();
@@ -56,7 +57,7 @@ const Profile = () => {
         </header>
 
         <div className="overflow-hidden rounded-3xl border border-white/10 glass-soft pb-7">
-          <ProfileHero name={user.username} handle={user.username} avatarUrl={user.avatar} bio={user.bio} stats={stats} actions={<ProfileEditor key={user.id} />} />
+          <ProfileHero name={displayNameOf(user)} handle={user.username} avatarUrl={user.avatar} coverUrl={user.cover} bio={user.bio} stats={stats} actions={<ProfileEditor key={user.id} />} />
         </div>
 
         <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_260px]">
@@ -80,7 +81,7 @@ const Profile = () => {
               <p className="mb-2 text-xs text-white/40">{user.email ? 'Signed-in email · private' : 'Solana wallet'}</p>
               <p className="break-all font-mono text-xs leading-6 text-white/70">{user.email || user.walletAddress}</p>
             </div>
-            <p className="border-t border-white/10 pt-4 text-xs leading-relaxed text-white/40">Your username, photo, and bio are public and can be changed with Edit profile. Your email is never shown on your public profile.</p>
+            <p className="border-t border-white/10 pt-4 text-xs leading-relaxed text-white/40">Your name, username, photo, cover, and bio are public and can be changed with Edit profile. Your email is never shown on your public profile.</p>
             <div className="border-t border-white/10 pt-4"><DeleteAccount /></div>
           </aside>
         </div>

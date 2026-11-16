@@ -1,7 +1,7 @@
 export type BadgeTier = 'blue' | 'gold';
 
-/** Accounts that always carry a gold tick, even before the database migration has been run. */
-export const FOUNDER_USERNAMES = ['sammy'];
+/** Usernames that always carry a gold tick regardless of the database. Keep this empty: a name freed by deleting an account could otherwise be claimed by anyone and inherit the tick. Grant badges in the database instead. */
+export const FOUNDER_USERNAMES: string[] = [];
 
 export interface Plan {
   id: BadgeTier;

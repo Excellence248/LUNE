@@ -6,6 +6,8 @@ import { WALLET_COOKIE, readWalletSession } from './wallet';
 export interface SessionProfile {
   id: string;
   username: string;
+  display_name: string;
+  cover_url: string;
   bio: string;
   avatar_url: string;
   wallet_address: string | null;
@@ -30,7 +32,7 @@ export const getViewer = async (event: H3Event): Promise<Viewer | null> => {
   const wallet = readWalletSession(getCookie(event, WALLET_COOKIE));
   if (wallet) {
     const profile = profileColumns(await sql`
-      select p.id, p.username, p.bio, public.avatar_src(p) as avatar_url, p.wallet_address
+      select p.id, p.username, p.display_name, p.bio, public.avatar_src(p) as avatar_url, p.cover_url, p.wallet_address
       from public.profiles p where p.id = ${wallet.profileId} and p.wallet_address = ${wallet.wallet}`);
     if (profile?.id) return { kind: 'wallet', email: null, emailVerified: false, profile };
   }
@@ -44,7 +46,7 @@ export const getViewer = async (event: H3Event): Promise<Viewer | null> => {
   if (!data?.user?.id) return null;
   const { id, email, emailVerified = false } = data.user;
   const profile = profileColumns(await sql`
-    select p.id, p.username, p.bio, public.avatar_src(p) as avatar_url, p.wallet_address
+    select p.id, p.username, p.display_name, p.bio, public.avatar_src(p) as avatar_url, p.cover_url, p.wallet_address
     from public.ensure_email_profile(${id}, ${email}, ${emailVerified}) p`);
   // A deleted account's cached session resolves to no profile.
   return profile?.id ? { kind: 'email', email, emailVerified, profile } : null;

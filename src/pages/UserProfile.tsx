@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Ban, Flag, Loader2, MoreHorizontal, UserMinus, UserPlus, UserX } from 'lucide-react';
+import { Ban, Flag, Loader2, MessageCircle, MoreHorizontal, UserMinus, UserPlus, UserX } from 'lucide-react';
 import Layout from '@/components/lune/Layout';
 import ProfileHero from '@/components/lune/ProfileHero';
 import ProfileActivity from '@/components/lune/ProfileActivity';
@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSocial, type PublicProfile } from '@/context/SocialContext';
 import { useWallet } from '@/context/WalletContext';
 import { showError, showSuccess } from '@/utils/toast';
+import { displayNameOf } from '@/lib/names';
 
 const PublicProfileView = ({ username }: { username: string }) => {
   const { user: currentUser } = useWallet();
@@ -129,9 +130,10 @@ const PublicProfileView = ({ username }: { username: string }) => {
   return (
     <Layout noPadding>
       <ProfileHero
-        name={profile.username}
+        name={displayNameOf(profile)}
         handle={profile.username}
         avatarUrl={profile.avatar_url}
+        coverUrl={profile.cover_url}
         bio={profile.bio}
         stats={profile.stats}
         footnote={profile.suspended ? 'This account is suspended.' : undefined}
@@ -141,6 +143,7 @@ const PublicProfileView = ({ username }: { username: string }) => {
           <>{moreMenu}<Button variant="outline" className="rounded-full border-white/15 bg-transparent" onClick={toggleBlock}>Unblock</Button></>
         ) : (
           <>{moreMenu}
+          {currentUser && <Button asChild variant="outline" className="rounded-full border-white/15 bg-transparent"><Link to={`/messages/${encodeURIComponent(profile.username)}`}><MessageCircle className="mr-2 h-4 w-4" />Message</Link></Button>}
           <Button
             variant={following ? 'outline' : 'default'}
             disabled={!currentUser || pending || followingLoading || !!followingError}

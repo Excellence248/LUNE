@@ -17,7 +17,7 @@ export default defineHandler(async (event) => {
   if (!used) throw new HTTPError('This sign-in request was already used. Try again.', { status: 401 });
   await sql`delete from public.wallet_nonces where used_at < now() - interval '1 day'`;
   const [profile] = await sql`
-    select p.id, p.username, p.bio, public.avatar_src(p) as avatar_url, p.wallet_address
+    select p.id, p.username, p.display_name, p.bio, public.avatar_src(p) as avatar_url, p.cover_url, p.wallet_address
     from public.ensure_wallet_profile(${address}) p`;
   setCookie(event, WALLET_COOKIE, createWalletSession(profile.id, address), {
     httpOnly: true,

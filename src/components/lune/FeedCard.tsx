@@ -15,6 +15,7 @@ import { formatDistanceToNowStrict } from 'date-fns';
 import { Link, useNavigate } from 'react-router-dom';
 import { showError, showSuccess } from '@/utils/toast';
 import { shortWalletAddress } from '@/lib/solana-wallet';
+import { displayNameOf } from '@/lib/names';
 
 interface FeedCardProps {
   post: Post & { repostedBy?: string };
@@ -169,7 +170,9 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
 
   const isRepost = post.post_type === 'repost';
   const displayUsername = isRepost ? post.repost_username : post.profiles?.username;
-  const displayName = displayUsername && displayUsername === post.profiles?.wallet_address ? shortWalletAddress(displayUsername) : displayUsername;
+  // The name shown as them (their chosen display name, else username); the @handle is always the username.
+  const displayName = displayNameOf({ username: displayUsername, display_name: isRepost ? '' : post.profiles?.display_name, wallet_address: post.profiles?.wallet_address });
+  const handle = displayUsername && displayUsername === post.profiles?.wallet_address ? shortWalletAddress(displayUsername) : displayUsername;
   const body = isRepost && post.repost_content ? post.repost_content : post.content;
 
   const askDeletePost = () => setConfirm({
@@ -214,7 +217,7 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
           <Avatar className="w-11 h-11 ring-1 ring-white/10 hover:ring-lune-400/50 transition-all">
             <AvatarImage src={isRepost ? undefined : post.profiles?.avatar_url} />
             <AvatarFallback className="bg-gradient-to-br from-lune-600/70 to-lune-900 text-lune-100 text-sm font-semibold">
-              {displayUsername?.[0]?.toUpperCase() || 'U'}
+              {displayName[0]?.toUpperCase() || 'U'}
             </AvatarFallback>
           </Avatar>
         </button>
@@ -226,10 +229,10 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
               className="font-semibold text-white hover:underline truncate"
               title={post.profiles?.wallet_address || undefined}
             >
-              {displayName || 'Lune user'}
+              {displayName}
             </button>
             <VerifiedBadge username={displayUsername} />
-            {displayUsername && <span className="text-white/35 truncate hidden sm:inline">@{displayName}</span>}
+            {handle && <span className="text-white/35 truncate hidden sm:inline">@{handle}</span>}
             <span className="text-white/25">·</span>
             <Link to={`/post/${post.id}`} aria-label="Open post and replies" className="shrink-0 text-sm text-white/35 hover:underline">
               <time dateTime={post.created_at} title={new Date(post.created_at).toLocaleString()}>{shortAgo(post.created_at)}</time>
@@ -313,8 +316,24 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
             <ActionButton icon={Coins} tone="amber" label="Tip (unavailable)" onClick={() => setIsTipOpen(true)} />
           </div>
 
+          {!showComments && !!post.replies?.length && (() => {
+            const count = post.replies.length;
+            const latest = post.replies[count - 1];
+            return (
+              <button type="button" onClick={() => setShowComments(true)} className="mt-2 block w-full rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-left transition-colors hover:bg-white/[0.05]">
+                <span className="text-xs font-semibold text-lune-300">{isOwnPost ? `${count} ${count === 1 ? 'reply' : 'replies'} on your post` : `View ${count === 1 ? '1 reply' : `all ${count} replies`}`}</span>
+                <span className="mt-0.5 block truncate text-xs text-white/55"><span className="font-semibold text-white/75">{displayNameOf(latest.profiles)}</span> {latest.content}</span>
+              </button>
+            );
+          })()}
+
           {showComments && (
             <div className="mt-3 rounded-2xl border border-white/[0.06] glass-soft p-3 space-y-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-white/70">{post.replies?.length ? `${post.replies.length} ${post.replies.length === 1 ? 'reply' : 'replies'}` : 'Replies'}</span>
+                {!initialCommentsOpen && <Link to={`/post/${post.id}`} className="text-lune-300 hover:underline">Open post</Link>}
+              </div>
+              <div className="max-h-[28rem] space-y-3 overflow-y-auto pr-1">
               {post.replies?.length ? (
                 post.replies.map(reply => (
                   <div key={reply.id} className="flex gap-2.5">
@@ -322,7 +341,7 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
                       <Avatar className="w-7 h-7 ring-1 ring-white/10">
                         <AvatarImage src={reply.profiles?.avatar_url} />
                         <AvatarFallback className="bg-lune-900 text-[10px] text-lune-200 font-semibold">
-                          {reply.profiles?.username?.[0]?.toUpperCase() || 'U'}
+                          {displayNameOf(reply.profiles)[0]?.toUpperCase() || 'U'}
                         </AvatarFallback>
                       </Avatar>
                     </button>
@@ -332,10 +351,11 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
                           onClick={() => navigateToProfile(reply.profiles?.username)}
                           className="font-semibold text-white hover:underline"
                         >
-                          {reply.profiles?.username}
+                          {displayNameOf(reply.profiles)}
                         </button>
                         <VerifiedBadge username={reply.profiles?.username} />
-                        <span className="text-white/30">{shortAgo(reply.created_at)}</span>
+                        {reply.profiles?.username && <span className="truncate text-white/30">@{reply.profiles.username}</span>}
+                        <span className="text-white/30">· {shortAgo(reply.created_at)}</span>
                         {currentUser && (
                           reply.user_id === currentUser.id ? (
                             <button onClick={() => askDeleteReply(reply)} aria-label="Delete your reply" title="Delete reply" className="ml-auto text-white/30 hover:text-red-300"><Trash2 size={13} /></button>
@@ -351,6 +371,7 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
               ) : (
                 <p className="text-xs text-white/35 px-1">No replies yet.</p>
               )}
+              </div>
 
               {currentUser ? (
                 <form onSubmit={handleComment} className="flex gap-2 pt-1">

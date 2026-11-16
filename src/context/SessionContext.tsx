@@ -7,8 +7,12 @@ export interface AccountUser {
   email: string;
   walletAddress: string | null;
   username: string;
+  /** The name shown as you; empty until you set one. Use displayNameOf() to show it. */
+  displayName: string;
   bio: string;
   avatar: string;
+  /** Profile banner image URL; empty for the default sky. */
+  cover: string;
 }
 
 /** How the member signed in: Neon Auth email/password, or a verified Solana wallet. */
@@ -22,8 +26,10 @@ interface AccountProfile {
   id: string;
   wallet_address: string | null;
   username: string;
+  display_name: string;
   bio: string;
   avatar_url: string;
+  cover_url: string;
 }
 
 /** 'required': must confirm a date of birth; 'ok': may use Lune; 'underage': too young. null while signed out. */
@@ -42,13 +48,13 @@ interface SessionContextType {
   /** Resolves true when signed in straight away, false when the email must be confirmed first. */
   signUp: (email: string, password: string) => Promise<boolean>;
   signOut: () => Promise<void>;
-  updateProfile: (data: Partial<Pick<AccountUser, 'username' | 'bio' | 'avatar'>>) => Promise<void>;
+  updateProfile: (data: Partial<Pick<AccountUser, 'username' | 'displayName' | 'bio' | 'avatar' | 'cover'>>) => Promise<void>;
 }
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
 const mapProfile = (profile: AccountProfile, email: string): AccountUser => ({
   id: profile.id, email, walletAddress: profile.wallet_address,
-  username: profile.username, bio: profile.bio, avatar: profile.avatar_url,
+  username: profile.username, displayName: profile.display_name ?? '', bio: profile.bio, avatar: profile.avatar_url, cover: profile.cover_url ?? '',
 });
 
 export const SessionContextProvider = ({ children }: { children: ReactNode }) => {
@@ -123,9 +129,13 @@ export const SessionContextProvider = ({ children }: { children: ReactNode }) =>
     setAgeStatus(result.ageStatus);
   };
 
-  const updateProfile = async (data: Partial<Pick<AccountUser, 'username' | 'bio' | 'avatar'>>) => {
+  const updateProfile = async (data: Partial<Pick<AccountUser, 'username' | 'displayName' | 'bio' | 'avatar' | 'cover'>>) => {
     if (!user) throw new Error('Log in to edit your profile.');
-    const changes = { username: (data.username ?? user.username).trim(), bio: data.bio ?? user.bio, avatar_url: data.avatar ?? user.avatar };
+    const changes = {
+      username: (data.username ?? user.username).trim(), display_name: (data.displayName ?? user.displayName).trim(),
+      bio: data.bio ?? user.bio, avatar_url: data.avatar ?? user.avatar, cover_url: data.cover ?? user.cover,
+    };
+    if (changes.display_name.length > 50) throw new Error('Your name must be 50 characters or fewer.');
     if (!/^[A-Za-z0-9_]{3,64}$/.test(changes.username)) throw new Error('Use 3–64 letters, numbers, or underscores for your username.');
     if (changes.bio.length > 500) throw new Error('Your bio must be 500 characters or fewer.');
     if (changes.avatar_url.length > 3000000) throw new Error('Your avatar must be 2 MB or smaller.');

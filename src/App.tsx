@@ -75,6 +75,7 @@ const App = () => (
         <Route path="/settings" element={<Settings />} />
         <Route path="/governance" element={<Governance />} />
         <Route path="/messages" element={<Messages />} />
+        <Route path="/messages/:username" element={<Messages />} />
         <Route path="/leaderboard" element={<Leaderboard />} />
         <Route path="/rewards" element={<Rewards />} />
         <Route path="/bridge" element={<Bridge />} />

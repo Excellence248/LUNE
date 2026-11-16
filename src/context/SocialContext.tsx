@@ -17,6 +17,9 @@ export interface ProfileStats {
 export interface PublicProfile {
   id: string;
   username: string;
+  /** The name shown as them; may be empty, in which case show the username. */
+  display_name?: string;
+  cover_url?: string;
   wallet_address: string | null;
   avatar_url: string;
   bio: string;
@@ -31,7 +34,7 @@ export interface Reply {
   user_id: string;
   content: string;
   created_at: string;
-  profiles?: Pick<PublicProfile, 'username' | 'avatar_url' | 'wallet_address'>;
+  profiles?: Pick<PublicProfile, 'username' | 'display_name' | 'avatar_url' | 'wallet_address'>;
 }
 
 export interface Post {
@@ -44,7 +47,7 @@ export interface Post {
   repost_content?: string;
   repost_username?: string;
   original_post_id?: string;
-  profiles?: Pick<PublicProfile, 'username' | 'avatar_url' | 'wallet_address'>;
+  profiles?: Pick<PublicProfile, 'username' | 'display_name' | 'avatar_url' | 'wallet_address'>;
   likes?: { user_id: string }[];
   reposts?: { user_id: string }[];
   replies?: Reply[];
@@ -58,7 +61,7 @@ export interface Notification {
   post_id?: string;
   read: boolean;
   created_at: string;
-  actor_profile?: { username: string; avatar_url: string };
+  actor_profile?: { username: string; display_name?: string; avatar_url: string };
 }
 
 /** Something a member can report: a post, a reply or a profile. `label` describes it in the dialog. */
@@ -342,7 +345,7 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
 
   const searchUsers = useCallback(async (query: string): Promise<PublicProfile[]> => {
     const term = query.trim().replace(/^@/, '');
-    if (!/^[A-Za-z0-9_]{1,64}$/.test(term)) return [];
+    if (!term || term.length > 64) return [];
     return api<PublicProfile[]>(`/api/profiles?q=${encodeURIComponent(term)}`);
   }, []);
 

@@ -29,6 +29,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Link, useLocation } from 'react-router-dom';
 import { useWallet } from '@/context/WalletContext';
+import { useUnreadMessages } from '@/hooks/useUnreadMessages';
 import { showError } from '@/utils/toast';
 import { LuneLogo } from './Brand';
 import MoonCompanion from './MoonCompanion';
@@ -86,12 +87,14 @@ const NavLink = ({
   path,
   active,
   onClick,
+  badge,
 }: {
   icon: React.ElementType;
   label: string;
   path: string;
   active: boolean;
   onClick?: () => void;
+  badge?: number;
 }) => (
   <Link
     to={path}
@@ -113,12 +116,14 @@ const NavLink = ({
       className={cn('transition-colors', active ? 'text-lune-300' : 'group-hover:text-lune-300')}
     />
     <span className={cn(active ? 'font-semibold' : 'font-medium')}>{label}</span>
+    {!!badge && <span aria-label={`${badge} unread`} className="ml-auto min-w-[1.25rem] rounded-full bg-lune-500 px-1.5 text-center text-[11px] font-semibold leading-5 text-white">{badge > 99 ? '99+' : badge}</span>}
   </Link>
 );
 
 export const SidebarContent = ({ onClose }: { onClose?: () => void }) => {
   const location = useLocation();
   const { isAuthenticated, disconnect } = useWallet();
+  const unreadMessages = useUnreadMessages();
 
   return (
     <div className="flex flex-col h-full">
@@ -134,7 +139,7 @@ export const SidebarContent = ({ onClose }: { onClose?: () => void }) => {
             </p>
             <div className="space-y-0.5">
               {section.items.map(item => (
-                <NavLink key={item.path} {...item} active={location.pathname === item.path} onClick={onClose} />
+                <NavLink key={item.path} {...item} active={location.pathname === item.path || (item.path === '/messages' && location.pathname.startsWith('/messages/'))} badge={item.path === '/messages' ? unreadMessages : undefined} onClick={onClose} />
               ))}
             </div>
           </div>

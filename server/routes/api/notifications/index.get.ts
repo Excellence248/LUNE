@@ -11,7 +11,7 @@ export default defineHandler(async (event) => {
   const [rows, [{ unread }]] = await Promise.all([
     sql`
       select n.id, n.user_id, n.actor_id, n.type, n.post_id, n.read, n.created_at,
-        jsonb_build_object('username', a.username, 'avatar_url', public.avatar_src(a)) as actor_profile
+        jsonb_build_object('username', a.username, 'display_name', a.display_name, 'avatar_url', public.avatar_src(a)) as actor_profile
       from public.notifications n join public.profiles a on a.id = n.actor_id
       where n.user_id = ${profile.id}
       order by n.created_at desc, n.id desc limit ${limit + 1}`,
