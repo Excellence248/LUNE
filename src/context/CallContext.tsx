@@ -109,6 +109,7 @@ export const CallProvider = ({ children }: { children: ReactNode }) => {
   const pendingCandidates = useRef<RTCIceCandidateInit[]>([]);
   const signalQueue = useRef<Promise<unknown>>(Promise.resolve());
   const polling = useRef(false);
+  const failures = useRef(0);
   const myIdRef = useRef(myId);
   myIdRef.current = myId;
 
@@ -249,9 +250,11 @@ export const CallProvider = ({ children }: { children: ReactNode }) => {
     polling.current = true;
     try {
       const data = await api<PollData>('/api/calls/poll', { method: 'POST', body: { callId: joinedRef.current ? callRef.current?.id ?? null : null, after: afterRef.current } });
+      failures.current = 0;
       await applyPoll(data);
     } catch {
-      /* offline or a hiccup: try again on the next tick */
+      /* offline or a hiccup: try again on the next tick (slower if it keeps failing) */
+      failures.current += 1;
     } finally {
       polling.current = false;
     }
@@ -267,7 +270,9 @@ export const CallProvider = ({ children }: { children: ReactNode }) => {
       if (stopped) return;
       await poll();
       if (stopped) return;
-      timer = setTimeout(tick, joinedRef.current ? 1000 : document.visibilityState === 'visible' ? 4000 : 8000);
+      // While not on a call, back off to every 30s once polling keeps failing (for example while the service is down).
+      const delay = joinedRef.current ? 1000 : failures.current >= 3 ? 30000 : document.visibilityState === 'visible' ? 4000 : 8000;
+      timer = setTimeout(tick, delay);
     };
     void tick();
     return () => { stopped = true; clearTimeout(timer); };
