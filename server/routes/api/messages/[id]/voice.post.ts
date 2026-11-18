@@ -3,6 +3,7 @@ import { HTTPError, getRouterParam } from 'nitro/h3';
 import { uuidParam } from '../../../../utils/admin';
 import { MAX_VOICE_BYTES, MAX_VOICE_MS, MIN_VOICE_MS, parsePeaks, sniffAudio } from '../../../../utils/audio';
 import { requirePermission } from '../../../../utils/auth';
+import { isMissingSchema } from '../../../../utils/calls';
 import { sql } from '../../../../utils/db';
 import { rateLimit } from '../../../../utils/limits';
 
@@ -36,6 +37,8 @@ export default defineHandler(async (event) => {
     // Raised by the database when either member has blocked the other.
     if (code === '42501') throw new HTTPError((error as Error).message, { status: 403 });
     if (code === 'P0002') throw new HTTPError('That member no longer exists.', { status: 404 });
+    // The database has not been set up for voice messages yet.
+    if (isMissingSchema(error)) throw new HTTPError('Voice messages aren’t available yet. Please try again soon.', { status: 503 });
     throw error;
   }
 });

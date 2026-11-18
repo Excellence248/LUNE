@@ -32,3 +32,9 @@ export const callError = (error: unknown): never => {
   if (code === '23514') throw new HTTPError(message, { status: 400 });
   throw error;
 };
+
+/** True when a query failed because the database does not have a column or table yet (a migration is pending). */
+export const isMissingSchema = (error: unknown) => {
+  const code = (error as { code?: string })?.code;
+  return code === '42703' || code === '42P01' || code === '42883';
+};

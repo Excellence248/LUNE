@@ -19,7 +19,7 @@ export default defineHandler(async (event) => {
   if (to === me.id) throw new HTTPError('You can’t message yourself.', { status: 400 });
   await enforceCivility(me.id, 'message', text);
   try {
-    const [row] = await sql`select jsonb_build_object('id', m.id, 'sender_id', m.sender_id, 'kind', m.kind, 'content', m.content, 'created_at', m.created_at, 'read_at', m.read_at) as message
+    const [row] = await sql`select jsonb_build_object('id', m.id, 'sender_id', m.sender_id, 'kind', coalesce(to_jsonb(m) ->> 'kind', 'text'), 'content', m.content, 'created_at', m.created_at, 'read_at', m.read_at) as message
       from public.send_direct_message(${me.id}, ${to}, ${text}) m`;
     return row.message;
   } catch (error) {

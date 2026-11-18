@@ -1,5 +1,6 @@
 import { defineHandler } from 'nitro';
 import { requireViewer } from '../../../utils/auth';
+import { isMissingSchema } from '../../../utils/calls';
 import { sql } from '../../../utils/db';
 
 // The caller's conversations, most recent first, each with the other member, the last message and how
@@ -7,19 +8,45 @@ import { sql } from '../../../utils/db';
 export default defineHandler(async (event) => {
   event.res.headers.set('Cache-Control', 'no-store');
   const { profile } = await requireViewer(event);
-  const items = await sql`
+  const me = profile.id;
+
+  const withVoice = () => sql`
     select o.id as user_id, o.username, o.display_name, public.avatar_src(o) as avatar_url,
       case when lm.kind = 'voice' then '🎤 Voice message' else lm.content end as last_content, lm.sender_id as last_sender_id, lm.created_at as last_at,
       (select count(*)::int from public.direct_messages d
-        where d.conversation_id = c.id and d.sender_id <> ${profile.id} and d.read_at is null) as unread
+        where d.conversation_id = c.id and d.sender_id <> ${me} and d.read_at is null) as unread
     from public.conversations c
-    join public.profiles o on o.id = case when c.member_a = ${profile.id} then c.member_b else c.member_a end
+    join public.profiles o on o.id = case when c.member_a = ${me} then c.member_b else c.member_a end
     join lateral (
       select d.kind, d.content, d.sender_id, d.created_at from public.direct_messages d
       where d.conversation_id = c.id order by d.created_at desc, d.id desc limit 1
     ) lm on true
-    where (c.member_a = ${profile.id} or c.member_b = ${profile.id}) and not public.is_blocked_between(${profile.id}, o.id)
+    where (c.member_a = ${me} or c.member_b = ${me}) and not public.is_blocked_between(${me}, o.id)
     order by c.last_message_at desc
     limit 100`;
+
+  // The same list for a database that does not have voice notes yet (its migration is still pending).
+  const textOnly = () => sql`
+    select o.id as user_id, o.username, o.display_name, public.avatar_src(o) as avatar_url,
+      lm.content as last_content, lm.sender_id as last_sender_id, lm.created_at as last_at,
+      (select count(*)::int from public.direct_messages d
+        where d.conversation_id = c.id and d.sender_id <> ${me} and d.read_at is null) as unread
+    from public.conversations c
+    join public.profiles o on o.id = case when c.member_a = ${me} then c.member_b else c.member_a end
+    join lateral (
+      select d.content, d.sender_id, d.created_at from public.direct_messages d
+      where d.conversation_id = c.id order by d.created_at desc, d.id desc limit 1
+    ) lm on true
+    where (c.member_a = ${me} or c.member_b = ${me}) and not public.is_blocked_between(${me}, o.id)
+    order by c.last_message_at desc
+    limit 100`;
+
+  let items;
+  try {
+    items = await withVoice();
+  } catch (error) {
+    if (!isMissingSchema(error)) throw error;
+    items = await textOnly();
+  }
   return { items, unread: items.reduce((total, row) => total + (row.unread as number), 0) };
 });
