@@ -1,32 +1,42 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api } from '@/lib/api';
+import { ApiError, api } from '@/lib/api';
 import { createSpaceTransport, type SpaceMessage, type SpaceTransport } from '@/lib/spaces/transport';
 
 /*
- * Audio spaces without a media server: WebRTC peer connections between participants,
- * signalled through the server by polling (see transport.ts). Speakers/host send mic audio;
- * listeners only receive. Rooms are ephemeral – a space is "live" while its host is present.
- *
- * Scale note: this is a mesh (every speaker <-> every participant), good for ~8 speakers and
- * a few dozen listeners. Strict NATs need a TURN server: set VITE_TURN_URL / _USERNAME / _CREDENTIAL.
+ * Audio spaces over the Cloudflare Realtime SFU: every member keeps one WebRTC connection to it. Speakers
+ * send their mic there once and the SFU forwards it to each listener, so a host's upload stays the same
+ * however big the audience is. The server brokers every SFU call (media.post.ts) and decides who may speak.
+ * Presence, hands and host controls still travel over the polling transport (transport.ts).
+ * Rooms are ephemeral – a space is "live" while its host is present.
  */
 
 export type SpaceRole = 'host' | 'speaker' | 'listener';
-export interface SpaceMember { id: string; name: string; avatar: string; role: SpaceRole; hand: boolean; muted: boolean; title?: string; }
+export interface SpaceMember {
+  id: string; name: string; avatar: string; role: SpaceRole; hand: boolean; muted: boolean; title?: string;
+  /** Set by the server: the member's SFU session, and whether their mic is being sent. */
+  media?: { session: string; mic: boolean } | null;
+}
 export type SpaceStatus = 'connecting' | 'live' | 'ended' | 'error';
 export interface LobbySpace { id: string; title: string; hostName: string; hostAvatar: string; startedAt: number; listeners: number; }
 
-const iceServers: RTCIceServer[] = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
-const turn = import.meta.env.VITE_TURN_URL as string | undefined;
-if (turn) iceServers.push({ urls: turn, username: import.meta.env.VITE_TURN_USERNAME as string | undefined, credential: import.meta.env.VITE_TURN_CREDENTIAL as string | undefined });
-
-interface Peer {
-  pc: RTCPeerConnection; polite: boolean; making: boolean; ignore: boolean;
-  sender: RTCRtpSender | null; queue: Promise<void>; audio?: HTMLAudioElement;
+interface TracksResponse {
+  sessionDescription?: RTCSessionDescriptionInit; requiresImmediateRenegotiation?: boolean;
+  tracks?: { mid?: string; errorCode?: string; errorDescription?: string }[];
 }
+/** A speaker's mic this member receives. `mid` is set once the SFU has added it to our connection. */
+interface Pulled { session: string; mid?: string; audio?: HTMLAudioElement }
 interface Me { id: string; name: string; avatar: string; }
 interface Options { host: boolean; title?: string; }
 interface Controls { toggleMute: () => void; raiseHand: () => void; control: (type: string, to?: string) => void; leave: () => void; resume: () => void; }
+
+/** The SFU takes no trickled candidates, so wait (briefly) until they are all in the local description. */
+const gathered = (pc: RTCPeerConnection) => new Promise<void>(resolve => {
+  if (pc.iceGatheringState === 'complete') return resolve();
+  const finish = () => { clearTimeout(timer); pc.removeEventListener('icegatheringstatechange', check); resolve(); };
+  const check = () => { if (pc.iceGatheringState === 'complete') finish(); };
+  const timer = setTimeout(finish, 3000);
+  pc.addEventListener('icegatheringstatechange', check);
+});
 
 export const useSpaceRoom = (spaceId: string, me: Me | null, { host, title = '' }: Options, enabled: boolean) => {
   const [members, setMembers] = useState<SpaceMember[]>([]);
@@ -39,14 +49,13 @@ export const useSpaceRoom = (spaceId: string, me: Me | null, { host, title = '' 
   const [roomTitle, setRoomTitle] = useState(title);
   const [audioBlocked, setAudioBlocked] = useState(false);
 
-  const api = useRef<Controls>();
+  const controls = useRef<Controls>();
   const meId = me?.id; const meName = me?.name; const meAvatar = me?.avatar;
 
   useEffect(() => {
     if (!enabled || !meId) return;
     let closed = false;
     const startedAt = Date.now();
-    const peers = new Map<string, Peer>();
     let transport: SpaceTransport | undefined;
     let mic: MediaStream | null = null;
     let myRole: SpaceRole = host ? 'host' : 'listener';
@@ -56,11 +65,17 @@ export const useSpaceRoom = (spaceId: string, me: Me | null, { host, title = '' 
     const levels = new Map<string, () => number>();
     let endTimer: ReturnType<typeof setTimeout> | undefined;
 
+    let pc: RTCPeerConnection | null = null; // our one connection to the SFU
+    let micTx: RTCRtpTransceiver | null = null; // our mic on it, while we speak
+    const pulled = new Map<string, Pulled>(); // member id -> their mic
+    let ops = Promise.resolve(); // the SFU accepts one change per session at a time
+
     const canSend = () => myRole !== 'listener';
     const meta = (): SpaceMember => ({ id: meId, name: meName || 'Guest', avatar: meAvatar || '', role: myRole, hand: myHand, muted: myMuted, title: host ? title : undefined });
     const lobbyMeta = (): LobbySpace => ({ id: spaceId, title, hostName: meName || 'Host', hostAvatar: meAvatar || '', startedAt, listeners: Math.max(0, current.length - 1) });
     const publish = () => { if (!closed) transport?.track(meta()); };
-    const sendSignal = (to: string, data: object) => { transport?.send('signal', data, to); };
+    const media = <T,>(op: string, body: object = {}) => api<T>(`/api/spaces/${encodeURIComponent(spaceId)}/media`, { method: 'POST', body: { op, ...body } });
+    const queue = (job: () => Promise<void>) => { ops = ops.then(job).catch(e => console.warn('space audio', e)); };
 
     const watch = (id: string, stream: MediaStream) => {
       try {
@@ -86,56 +101,105 @@ export const useSpaceRoom = (spaceId: string, me: Me | null, { host, title = '' 
     };
     const releaseMic = () => { mic?.getTracks().forEach(t => t.stop()); mic = null; levels.delete(meId); };
 
-    const syncSender = (peer: Peer) => {
+    const silence = (p: Pulled) => { if (p.audio) { p.audio.pause(); p.audio.srcObject = null; } };
+
+    /** Starts over with a new SFU session, e.g. after the network dropped. */
+    const resetMedia = () => {
+      const old = pc; pc = null; micTx = null;
+      pulled.forEach((p, id) => { silence(p); levels.delete(id); });
+      pulled.clear();
+      old?.close();
+      setTimeout(() => { if (!closed) reconcile(); }, 2000);
+    };
+
+    const connection = async () => {
+      if (pc) return pc;
+      const { iceServers } = await media<{ iceServers: RTCIceServer[] }>('connect').catch((e: unknown) => {
+        setError(e instanceof ApiError ? e.message : 'Could not connect to the audio service. Check your connection.');
+        throw e;
+      });
+      if (closed) throw new Error('left the space');
+      const next = new RTCPeerConnection({ iceServers, bundlePolicy: 'max-bundle' });
+      next.ontrack = ({ transceiver, track }) => {
+        const entry = [...pulled.entries()].find(([, p]) => p.mid && p.mid === transceiver.mid);
+        if (!entry) return;
+        const [id, p] = entry;
+        // Each renegotiation re-fires ontrack for tracks already playing; re-attaching would glitch the audio.
+        if ((p.audio?.srcObject as MediaStream | null)?.getTracks().includes(track)) return;
+        const stream = new MediaStream([track]);
+        p.audio ??= new Audio();
+        p.audio.autoplay = true; p.audio.srcObject = stream; watch(id, stream);
+        p.audio.play().then(() => setAudioBlocked(false)).catch(() => setAudioBlocked(true));
+      };
+      next.onconnectionstatechange = () => { if (next.connectionState === 'failed' && pc === next) resetMedia(); };
+      pc = next;
+      return next;
+    };
+
+    const pushMic = () => queue(async () => {
       const track = mic?.getAudioTracks()[0];
-      if (canSend() && track && mic && !peer.sender) peer.sender = peer.pc.addTrack(track, mic);
-      else if (!canSend() && peer.sender) { try { peer.pc.removeTrack(peer.sender); } catch { /* connection closed */ } peer.sender = null; }
+      if (closed || !canSend() || !mic || !track || micTx) return;
+      const conn = await connection();
+      const tx = conn.addTransceiver(track, { direction: 'sendonly', streams: [mic] });
+      micTx = tx;
+      try {
+        await conn.setLocalDescription(await conn.createOffer());
+        await gathered(conn);
+        const res = await media<TracksResponse>('push', { sdp: conn.localDescription?.sdp, mid: tx.mid });
+        if (!res.sessionDescription || res.tracks?.some(t => t.errorCode)) throw new Error(res.tracks?.[0]?.errorDescription || 'mic not accepted');
+        await conn.setRemoteDescription(res.sessionDescription);
+      } catch (e) {
+        if (micTx === tx) { micTx = null; tx.stop(); }
+        setError('Your microphone could not be connected. Leave and rejoin to try again.');
+        throw e;
+      }
+    });
+
+    const stopMic = () => {
+      const tx = micTx; micTx = null;
+      if (!tx) return;
+      const mid = tx.mid;
+      queue(async () => { tx.stop(); await media('close', { mic: true, mids: mid ? [mid] : [] }); });
     };
 
-    const closePeer = (id: string) => {
-      const p = peers.get(id); if (!p) return;
-      peers.delete(id); levels.delete(id);
-      if (p.audio) { p.audio.pause(); p.audio.srcObject = null; }
-      p.pc.close();
-    };
-
-    const createPeer = (id: string, initiator: boolean): Peer => {
-      const pc = new RTCPeerConnection({ iceServers });
-      const peer: Peer = { pc, polite: meId > id, making: false, ignore: false, sender: null, queue: Promise.resolve() };
-      peers.set(id, peer);
-      pc.onicecandidate = e => { if (e.candidate) sendSignal(id, { candidate: e.candidate.toJSON() }); };
-      pc.onnegotiationneeded = async () => {
+    const pull = (id: string, session: string) => {
+      const entry: Pulled = { session };
+      pulled.set(id, entry);
+      queue(async () => {
+        if (closed || pulled.get(id) !== entry) return;
         try {
-          peer.making = true;
-          await pc.setLocalDescription();
-          if (pc.localDescription) sendSignal(id, { description: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } });
-        } catch (e) { console.warn('negotiation failed', e); } finally { peer.making = false; }
-      };
-      pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed') pc.restartIce(); };
-      pc.ontrack = ({ streams, track }) => {
-        const stream = streams[0] ?? new MediaStream([track]);
-        if (!peer.audio) { peer.audio = new Audio(); peer.audio.autoplay = true; watch(id, stream); }
-        peer.audio.srcObject = stream;
-        peer.audio.play().then(() => setAudioBlocked(false)).catch(() => setAudioBlocked(true));
-      };
-      syncSender(peer);
-      // An initiating listener has nothing to send but must still ask to receive.
-      if (initiator && !canSend()) pc.addTransceiver('audio', { direction: 'recvonly' });
-      return peer;
+          const conn = await connection();
+          const res = await media<TracksResponse>('pull', { sessions: [session] });
+          const track = res.tracks?.[0];
+          if (!track?.mid || track.errorCode || !res.sessionDescription) throw new Error(track?.errorDescription || 'speaker not available');
+          entry.mid = track.mid; // before the offer is applied, so ontrack can find whose mic it is
+          await conn.setRemoteDescription(res.sessionDescription);
+          await conn.setLocalDescription(await conn.createAnswer());
+          await gathered(conn);
+          await media('answer', { sdp: conn.localDescription?.sdp });
+          // They stopped speaking while this was in flight.
+          if (pulled.get(id) !== entry) await media('close', { mids: [track.mid] });
+        } catch (e) {
+          if (pulled.get(id) === entry) { pulled.delete(id); setTimeout(reconcile, 3000); } // try again shortly
+          throw e;
+        }
+      });
     };
 
+    const dropPull = (id: string) => {
+      const p = pulled.get(id); if (!p) return;
+      pulled.delete(id); levels.delete(id); silence(p);
+      const mid = p.mid;
+      if (mid) queue(async () => { await media('close', { mids: [mid] }); });
+    };
+
+    /** Brings our connection in line with who is speaking: send our mic while we may, receive every live mic. */
     const reconcile = () => {
-      for (const id of [...peers.keys()]) {
-        const m = current.find(x => x.id === id);
-        if (!m || (!canSend() && m.role === 'listener')) closePeer(id);
-      }
-      for (const m of current) {
-        if (m.id === meId) continue;
-        if (!canSend() && m.role === 'listener') continue; // listeners never connect to each other
-        const existing = peers.get(m.id);
-        if (existing) syncSender(existing);
-        else if (meId < m.id) createPeer(m.id, true); // the lower id initiates; the other side answers
-      }
+      if (closed) return;
+      const live = current.filter(m => m.id !== meId && m.role !== 'listener' && m.media?.mic && m.media.session);
+      for (const [id, p] of [...pulled]) if (!live.some(m => m.id === id && m.media?.session === p.session)) dropPull(id);
+      for (const m of live) if (!pulled.has(m.id) && m.media) pull(m.id, m.media.session);
+      if (canSend() && mic && !micTx) pushMic();
     };
 
     const meter = setInterval(() => {
@@ -148,7 +212,8 @@ export const useSpaceRoom = (spaceId: string, me: Me | null, { host, title = '' 
       closed = true;
       if (endTimer) clearTimeout(endTimer);
       clearInterval(meter);
-      [...peers.keys()].forEach(closePeer);
+      pulled.forEach(silence); pulled.clear();
+      pc?.close(); pc = null;
       releaseMic();
       void ctx?.close();
       transport?.close();
@@ -175,31 +240,9 @@ export const useSpaceRoom = (spaceId: string, me: Me | null, { host, title = '' 
       reconcile();
     };
 
-    const handleSignal = (payload: { from: string; to: string; description?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit }) => {
-      if (closed || payload.to !== meId) return;
-      const peer = peers.get(payload.from) ?? createPeer(payload.from, false);
-      peer.queue = peer.queue.then(async () => {
-        const { pc } = peer;
-        try {
-          if (payload.description) {
-            const collision = payload.description.type === 'offer' && (peer.making || pc.signalingState !== 'stable');
-            peer.ignore = !peer.polite && collision;
-            if (peer.ignore) return;
-            await pc.setRemoteDescription(payload.description);
-            if (payload.description.type === 'offer') {
-              await pc.setLocalDescription();
-              if (pc.localDescription) sendSignal(payload.from, { description: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } });
-            }
-          } else if (payload.candidate) {
-            try { await pc.addIceCandidate(payload.candidate); } catch (e) { if (!peer.ignore) throw e; }
-          }
-        } catch (e) { console.warn('signal failed', e); }
-      });
-    };
-
     const becomeListener = () => {
       myRole = 'listener'; myHand = false; setRole('listener'); setHand(false);
-      releaseMic(); peers.forEach(syncSender); reconcile(); publish();
+      stopMic(); releaseMic(); publish();
     };
 
     const handleControl = async (p: { from: string; type: string; to?: string }) => {
@@ -210,7 +253,7 @@ export const useSpaceRoom = (spaceId: string, me: Me | null, { host, title = '' 
         myMuted = false;
         if (!(await acquireMic())) return;
         myRole = 'speaker'; myHand = false; setRole('speaker'); setHand(false); setMuted(false);
-        reconcile(); peers.forEach(syncSender); publish();
+        publish(); reconcile();
       } else if (p.type === 'demote' && myRole === 'speaker') {
         becomeListener();
       } else if (p.type === 'mute' && myRole !== 'listener') {
@@ -218,7 +261,7 @@ export const useSpaceRoom = (spaceId: string, me: Me | null, { host, title = '' 
       }
     };
 
-    api.current = {
+    controls.current = {
       toggleMute: () => {
         if (myRole === 'listener') return;
         myMuted = !myMuted; setMuted(myMuted);
@@ -232,15 +275,14 @@ export const useSpaceRoom = (spaceId: string, me: Me | null, { host, title = '' 
         if (type === 'end') setTimeout(() => endRoom(), 300); // let the broadcast leave first
       },
       leave: () => endRoom(),
-      resume: () => { peers.forEach(p => { void p.audio?.play().then(() => setAudioBlocked(false)); }); void ctx?.resume(); },
+      resume: () => { pulled.forEach(p => { void p.audio?.play().then(() => setAudioBlocked(false)); }); void ctx?.resume(); },
     };
 
     (async () => {
       if (host && !(await acquireMic())) { if (!closed) setStatus('error'); return; }
       if (closed) { releaseMic(); return; }
       const onMessage = ({ from, to, event, payload }: SpaceMessage) => {
-        if (event === 'signal') handleSignal({ ...payload, from, to: to ?? meId });
-        else void handleControl({ from, type: String(payload.type), to: to ?? undefined });
+        if (event === 'control') void handleControl({ from, type: String(payload.type), to: to ?? undefined });
       };
       transport = createSpaceTransport<SpaceMember>(spaceId, {
         lobby: host ? lobbyMeta : undefined,
@@ -254,19 +296,19 @@ export const useSpaceRoom = (spaceId: string, me: Me | null, { host, title = '' 
       publish();
     })();
 
-    return () => { if (!closed) teardown(); api.current = undefined; };
+    return () => { if (!closed) teardown(); controls.current = undefined; };
   }, [spaceId, meId, meName, meAvatar, host, title, enabled]);
 
   return {
     members, status, error, role, muted, hand, speaking, roomTitle, audioBlocked,
-    toggleMute: useCallback(() => api.current?.toggleMute(), []),
-    raiseHand: useCallback(() => api.current?.raiseHand(), []),
-    promote: useCallback((id: string) => api.current?.control('promote', id), []),
-    demote: useCallback((id: string) => api.current?.control('demote', id), []),
-    forceMute: useCallback((id: string) => api.current?.control('mute', id), []),
-    end: useCallback(() => api.current?.control('end'), []),
-    leave: useCallback(() => api.current?.leave(), []),
-    resumeAudio: useCallback(() => api.current?.resume(), []),
+    toggleMute: useCallback(() => controls.current?.toggleMute(), []),
+    raiseHand: useCallback(() => controls.current?.raiseHand(), []),
+    promote: useCallback((id: string) => controls.current?.control('promote', id), []),
+    demote: useCallback((id: string) => controls.current?.control('demote', id), []),
+    forceMute: useCallback((id: string) => controls.current?.control('mute', id), []),
+    end: useCallback(() => controls.current?.control('end'), []),
+    leave: useCallback(() => controls.current?.leave(), []),
+    resumeAudio: useCallback(() => controls.current?.resume(), []),
   };
 };
 

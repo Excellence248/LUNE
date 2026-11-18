@@ -18,6 +18,13 @@ export default defineHandler(async (event) => {
   if (body.event === 'control') {
     const [host] = await sql`select 1 from public.spaces_live where space_id = ${space} and host_id = ${profile.id}`;
     if (!host) throw new HTTPError('Only the host can do that.', { status: 403 });
+    // Record promotions before the message goes out, so the member's next poll is already allowed to speak.
+    const type = (body.payload as { type?: unknown } | null)?.type;
+    if (to && (type === 'promote' || type === 'demote')) {
+      await sql`
+        update public.space_members set meta = meta || jsonb_build_object('promoted', ${type === 'promote'}::boolean)
+        where space_id = ${space} and member_id = ${to}`;
+    }
   }
   await sql`
     insert into public.space_signals (space_id, from_id, to_id, event, payload)

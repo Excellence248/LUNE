@@ -53,7 +53,8 @@ export const createSpaceTransport = <M>(spaceId: string, { lobby, onMembers, onM
       if (closed) return;
       failures = 0;
       // A full page means more are waiting; continue from the last one received.
-      after = data.signals.length === PAGE ? data.signals[PAGE - 1].id : data.last;
+      // The first poll's messages are dropped below, so skip straight past all of them.
+      after = ready && data.signals.length === PAGE ? data.signals[PAGE - 1].id : data.last;
       const members = JSON.stringify(data.members);
       if (members !== lastMembers) { lastMembers = members; onMembers(data.members); }
       // Messages from before we joined were never meant for us.

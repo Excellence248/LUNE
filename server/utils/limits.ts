@@ -14,6 +14,7 @@ export const LIMITS = {
   payment: [20, 3600],
   spaceSend: [1200, 60],
   spacePoll: [180, 60],
+  spaceMedia: [300, 60],
   walletNonce: [20, 600],
   walletVerify: [20, 600],
   signUp: [5, 3600],
