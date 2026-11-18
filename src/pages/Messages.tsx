@@ -17,9 +17,10 @@ import { useCall } from '@/context/CallContext';
 import { useWallet } from '@/context/WalletContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { announceMessagesChanged } from '@/hooks/useUnreadMessages';
+import { useVisualViewport } from '@/hooks/useVisualViewport';
 import { useVoiceRecorder, type Recording } from '@/hooks/useVoiceRecorder';
 import { ApiError, api, uploadVoice } from '@/lib/api';
-import { DEFAULT_CHAT_PRESET, DOODLES_URL, backgroundCss, useAppearance } from '@/lib/appearance';
+import { DEFAULT_CHAT_PRESET, DOODLES_URL, backgroundCss, useAppearance, useIsPortrait } from '@/lib/appearance';
 import { displayNameOf } from '@/lib/names';
 import { cn } from '@/lib/utils';
 
@@ -77,7 +78,8 @@ const Ticks = ({ read, className }: { read: boolean; className?: string }) =>
 /** The chat wallpaper: a space scene (yours or Nebula), the faint doodle pattern, and a dimming layer for readability. */
 const ChatWallpaper = () => {
   const { chat, chatDim, doodles } = useAppearance();
-  const css = backgroundCss(chat, DEFAULT_CHAT_PRESET);
+  const portrait = useIsPortrait();
+  const css = backgroundCss(chat, DEFAULT_CHAT_PRESET, portrait);
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden" style={{ background: css ?? undefined }}>
       <div className="absolute inset-0 bg-black" style={{ opacity: chat.kind === 'default' ? 0.18 : chatDim }} />
@@ -401,29 +403,178 @@ const ThreadSkeleton = () => (
   </div>
 );
 
+interface ComposerProps {
+  peerId: string; myId: string; name: string; features: Features;
+  replyTo: ThreadMessage | null; onCancelReply: () => void; onSent: (message: ThreadMessage) => void;
+}
+
+/**
+ * The message box. It owns what you are typing and the voice recorder, so each keystroke (and each
+ * tick of a recording) re-renders only this box, never the whole conversation.
+ */
+const Composer = memo(({ peerId, myId, name, features, replyTo, onCancelReply, onSent }: ComposerProps) => {
+  const recorder = useVoiceRecorder();
+  const [draft, setDraft] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState('');
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const box = useRef<HTMLTextAreaElement>(null);
+  const sendingRef = useRef(false);
+  const replyId = replyTo && features.replies ? replyTo.id : null;
+
+  // Starting a reply puts the cursor in the box.
+  useEffect(() => { if (replyTo) { setEmojiOpen(false); box.current?.focus(); } }, [replyTo]);
+
+  // The box grows with what you type, up to about five lines. Done in a frame callback so typing is never blocked.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const el = box.current;
+      if (!el) return;
+      el.style.height = 'auto';
+      el.style.height = `${Math.min(el.scrollHeight, 132)}px`;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [draft]);
+
+  const send = async (event?: FormEvent) => {
+    event?.preventDefault();
+    const content = draft.trim();
+    if (!content || sendingRef.current) return;
+    sendingRef.current = true;
+    setSending(true);
+    setSendError('');
+    setEmojiOpen(false);
+    try {
+      onSent(await api<ThreadMessage>(`/api/messages/${peerId}`, { method: 'POST', body: { content, ...(replyId ? { reply_to: replyId } : {}) } }));
+      setDraft('');
+      onCancelReply();
+      box.current?.focus();
+    } catch (cause) {
+      setSendError(cause instanceof Error ? cause.message : 'Your message could not be sent. Please try again.');
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
+    }
+  };
+
+  const sendVoice = async (recording: Recording | null) => {
+    if (!recording) { setSendError('That was too short. Keep the mic going a little longer to record a voice message.'); return; }
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+    setSending(true);
+    setSendError('');
+    try {
+      onSent(await uploadVoice<ThreadMessage>(peerId, recording.blob, recording.durationMs, recording.peaks, replyId));
+      onCancelReply();
+    } catch (cause) {
+      setSendError(cause instanceof Error ? cause.message : 'Your voice message could not be sent. Please try again.');
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
+    }
+  };
+
+  const startRecording = () => {
+    setSendError('');
+    setEmojiOpen(false);
+    // At the two-minute limit the recorder stops itself and sends what it has.
+    void recorder.start(result => void sendVoice(result));
+  };
+
+  const addEmoji = (emoji: string) => {
+    const el = box.current;
+    const from = el?.selectionStart ?? draft.length;
+    const to = el?.selectionEnd ?? draft.length;
+    setDraft((draft.slice(0, from) + emoji + draft.slice(to)).slice(0, MAX_LENGTH));
+    requestAnimationFrame(() => { el?.focus(); el?.setSelectionRange(from + emoji.length, from + emoji.length); });
+  };
+
+  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Escape') { if (replyTo) onCancelReply(); else setEmojiOpen(false); return; }
+    // Phone keyboards report Enter as a new line while composing; only a real Enter (not mid-word) sends.
+    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) { event.preventDefault(); void send(); }
+  };
+
+  const problem = sendError || recorder.error;
+
+  return (
+    <form onSubmit={send} className="relative px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1.5">
+      {problem && <p role="alert" className="mb-2 rounded-2xl border border-red-400/25 bg-red-500/20 px-3.5 py-2 text-sm text-red-100 backdrop-blur">{problem}</p>}
+      {replyTo && features.replies && !recorder.recording && (
+        <div className="tg-pill mb-2 flex items-center gap-3 rounded-2xl py-2 pl-3 pr-2">
+          <CornerUpLeft className="h-4 w-4 shrink-0 text-lune-300" aria-hidden />
+          <div className="min-w-0 flex-1 border-l-[3px] border-lune-300 pl-2.5">
+            <p className="truncate text-[13px] font-semibold text-lune-300">Replying to {replyTo.sender_id === myId ? 'yourself' : name}</p>
+            <p className="truncate text-[13px] text-white/70">{replyTo.kind === 'voice' ? '🎤 Voice message' : replyTo.content}</p>
+          </div>
+          <button type="button" onClick={onCancelReply} aria-label="Cancel reply" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white"><X size={17} /></button>
+        </div>
+      )}
+      {emojiOpen && !recorder.recording && (
+        <div role="dialog" aria-label="Emoji" className="tg-pill absolute bottom-full left-3 right-3 z-30 mb-2 grid max-h-44 grid-cols-9 gap-0.5 overflow-y-auto rounded-3xl p-2 sm:right-auto sm:w-[22rem]">
+          {EMOJIS.map(emoji => <button key={emoji} type="button" onClick={() => addEmoji(emoji)} className="flex h-9 items-center justify-center rounded-xl text-xl transition-colors hover:bg-white/10" aria-label={`Insert ${emoji}`}>{emoji}</button>)}
+        </div>
+      )}
+      {recorder.recording ? (
+        <div className="flex items-center gap-2">
+          <CircleButton label="Cancel recording" onClick={recorder.cancel} className="text-red-300 hover:text-red-200"><Trash2 size={19} /></CircleButton>
+          <div className="tg-pill flex h-11 min-w-0 flex-1 items-center gap-3 rounded-full px-4">
+            <span role="timer" aria-label="Recording time" className="flex shrink-0 items-center gap-2 text-[15px] font-medium tabular-nums"><span aria-hidden className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-500" />{clock(recorder.elapsed)}</span>
+            <div aria-hidden className="flex h-7 min-w-0 flex-1 items-center justify-end gap-[2px] overflow-hidden">
+              {recorder.live.map((bar, index) => <span key={index} style={{ height: `${Math.max(14, bar)}%` }} className="w-[3px] shrink-0 rounded-full bg-lune-300" />)}
+            </div>
+          </div>
+          <CircleButton label="Send voice message" onClick={() => void recorder.stop().then(sendVoice)} disabled={sending} className="bg-lune-500 text-white hover:bg-lune-600">
+            {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <SendHorizontal size={19} />}
+          </CircleButton>
+        </div>
+      ) : (
+        <div className="flex items-end gap-2">
+          <CircleButton label="Emoji" onClick={() => setEmojiOpen(open => !open)} className={emojiOpen ? 'text-lune-300' : undefined}><Smile size={21} /></CircleButton>
+          <div className="tg-pill flex min-h-[2.75rem] min-w-0 flex-1 items-center rounded-[1.4rem] px-4 transition-shadow focus-within:shadow-[0_0_0_2px_rgba(192,132,252,0.45)]">
+            {/* 16px: smaller text makes iPhones zoom the whole page when the box is tapped. */}
+            <textarea
+              ref={box} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={onKeyDown}
+              maxLength={MAX_LENGTH} rows={1} disabled={sending} enterKeyHint="send" autoComplete="off" autoCorrect="on" autoCapitalize="sentences" spellCheck
+              aria-label={`Message ${name}`} placeholder={replyTo ? 'Write your reply' : 'Message'}
+              className="max-h-[132px] min-h-[2.25rem] w-full resize-none bg-transparent py-[9px] text-[16px] leading-snug text-white outline-none placeholder:text-white/45 disabled:opacity-60"
+            />
+          </div>
+          {draft.trim() ? (
+            <CircleButton type="submit" label="Send message" disabled={sending} className="bg-lune-500 text-white hover:bg-lune-600">
+              {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <SendHorizontal size={19} />}
+            </CircleButton>
+          ) : features.voice ? (
+            <CircleButton label="Record a voice message" onClick={startRecording} disabled={sending}>
+              {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic size={21} />}
+            </CircleButton>
+          ) : (
+            <CircleButton type="submit" label="Send message" disabled className="bg-lune-500/60 text-white"><SendHorizontal size={19} /></CircleButton>
+          )}
+        </div>
+      )}
+      {draft.length > MAX_LENGTH - 200 && <p className="mt-1 text-right text-xs tabular-nums text-white/50">{draft.length}/{MAX_LENGTH}</p>}
+    </form>
+  );
+});
+Composer.displayName = 'Composer';
+
 /** Right pane: one conversation. Polls for new messages while the tab is visible. */
 const Thread = ({ peer, myId, unreadElsewhere, onActivity }: { peer: PublicProfile; myId: string; unreadElsewhere: number; onActivity: () => void }) => {
   const { call, busy: callBusy, startCall } = useCall();
-  const recorder = useVoiceRecorder();
   const cached = threadCache.get(cacheKey(myId, peer.id))?.data;
   const [member, setMember] = useState<ThreadMember | null>(cached?.member ?? null);
   const [messages, setMessages] = useState<ThreadMessage[]>(cached?.messages ?? []);
   const [features, setFeatures] = useState<Features>(cached?.features ?? { voice: true, replies: false });
   const [ready, setReady] = useState(!!cached);
   const [loadError, setLoadError] = useState('');
-  const [draft, setDraft] = useState('');
-  const [sending, setSending] = useState(false);
-  const [sendError, setSendError] = useState('');
-  const [emojiOpen, setEmojiOpen] = useState(false);
   const [atBottom, setAtBottom] = useState(true);
   const [newBelow, setNewBelow] = useState(0);
   const [replyTo, setReplyTo] = useState<ThreadMessage | null>(null);
   const [flashId, setFlashId] = useState<string | null>(null);
   const [divider, setDivider] = useState<{ id: string; count: number } | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
-  const composer = useRef<HTMLTextAreaElement>(null);
   const stick = useRef(true);
-  const sendingRef = useRef(false);
   const lastSeen = useRef(cached ? signatureOf(cached.messages) : '');
   const knownCount = useRef(cached?.messages.length ?? 0);
   const dividerSet = useRef(false);
@@ -467,19 +618,23 @@ const Thread = ({ peer, myId, unreadElsewhere, onActivity }: { peer: PublicProfi
     return () => clearInterval(timer);
   }, [load]);
 
+  // When the keyboard opens or closes the visible area changes size: stay on the newest message if you were there.
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const keepBottom = () => {
+      const box = scroller.current;
+      if (box && stick.current) requestAnimationFrame(() => { box.scrollTop = box.scrollHeight; });
+    };
+    viewport.addEventListener('resize', keepBottom);
+    return () => viewport.removeEventListener('resize', keepBottom);
+  }, []);
+
   // Scroll to the newest message before the screen is painted, so the conversation never visibly jumps.
   useLayoutEffect(() => {
     const box = scroller.current;
     if (box && stick.current) box.scrollTop = box.scrollHeight;
   }, [messages, ready]);
-
-  // The message box grows with what you type, up to about five lines.
-  useEffect(() => {
-    const box = composer.current;
-    if (!box) return;
-    box.style.height = 'auto';
-    box.style.height = `${Math.min(box.scrollHeight, 132)}px`;
-  }, [draft]);
 
   const jumpToLatest = () => {
     const box = scroller.current;
@@ -491,9 +646,9 @@ const Thread = ({ peer, myId, unreadElsewhere, onActivity }: { peer: PublicProfi
 
   const startReply = useCallback((message: ThreadMessage) => {
     setReplyTo(message);
-    setEmojiOpen(false);
-    composer.current?.focus();
   }, []);
+
+  const cancelReply = useCallback(() => setReplyTo(null), []);
 
   const jumpTo = useCallback((id: string) => {
     const target = document.getElementById(`msg-${id}`);
@@ -515,73 +670,11 @@ const Thread = ({ peer, myId, unreadElsewhere, onActivity }: { peer: PublicProfi
     onActivity();
   };
 
-  const replyId = replyTo && features.replies ? replyTo.id : null;
-
-  const send = async (event?: FormEvent) => {
-    event?.preventDefault();
-    const content = draft.trim();
-    if (!content || sendingRef.current) return;
-    sendingRef.current = true;
-    setSending(true);
-    setSendError('');
-    setEmojiOpen(false);
-    try {
-      appendSent(await api<ThreadMessage>(`/api/messages/${peer.id}`, { method: 'POST', body: { content, ...(replyId ? { reply_to: replyId } : {}) } }));
-      setDraft('');
-      setReplyTo(null);
-      composer.current?.focus();
-    } catch (cause) {
-      setSendError(cause instanceof Error ? cause.message : 'Your message could not be sent. Please try again.');
-    } finally {
-      sendingRef.current = false;
-      setSending(false);
-    }
-  };
-
-  const sendVoice = async (recording: Recording | null) => {
-    if (!recording) { setSendError('That was too short. Keep the mic going a little longer to record a voice message.'); return; }
-    if (sendingRef.current) return;
-    sendingRef.current = true;
-    setSending(true);
-    setSendError('');
-    try {
-      appendSent(await uploadVoice<ThreadMessage>(peer.id, recording.blob, recording.durationMs, recording.peaks, replyId));
-      setReplyTo(null);
-    } catch (cause) {
-      setSendError(cause instanceof Error ? cause.message : 'Your voice message could not be sent. Please try again.');
-    } finally {
-      sendingRef.current = false;
-      setSending(false);
-    }
-  };
-
-  const startRecording = () => {
-    setSendError('');
-    setEmojiOpen(false);
-    // At the two-minute limit the recorder stops itself and sends what it has.
-    void recorder.start(result => void sendVoice(result));
-  };
-
-  const addEmoji = (emoji: string) => {
-    const box = composer.current;
-    const from = box?.selectionStart ?? draft.length;
-    const to = box?.selectionEnd ?? draft.length;
-    const next = (draft.slice(0, from) + emoji + draft.slice(to)).slice(0, MAX_LENGTH);
-    setDraft(next);
-    requestAnimationFrame(() => { box?.focus(); box?.setSelectionRange(from + emoji.length, from + emoji.length); });
-  };
-
-  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === 'Escape') { if (replyTo) setReplyTo(null); else setEmojiOpen(false); return; }
-    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); }
-  };
-
   const blocked = !!member?.blocked;
   const shown = member ?? { username: peer.username, display_name: peer.display_name ?? '', avatar_url: peer.avatar_url };
   const name = displayNameOf(shown);
   const canCall = !blocked && !call && !callBusy;
   const callPeer = { id: peer.id, username: peer.username, display_name: shown.display_name, avatar_url: shown.avatar_url };
-  const problem = sendError || recorder.error;
   const canReply = features.replies && !blocked;
 
   // Group the messages by day, so each day's date pill can stay at the top while that day scrolls.
@@ -663,64 +756,27 @@ const Thread = ({ peer, myId, unreadElsewhere, onActivity }: { peer: PublicProfi
       {blocked ? (
         <p role="status" className="tg-pill mx-3 mb-[max(0.75rem,env(safe-area-inset-bottom))] mt-1 rounded-full px-4 py-3 text-center text-sm text-white/65">You can’t message this account.</p>
       ) : (
-        <form onSubmit={send} className="relative px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1.5">
-          {problem && <p role="alert" className="mb-2 rounded-2xl border border-red-400/25 bg-red-500/20 px-3.5 py-2 text-sm text-red-100 backdrop-blur">{problem}</p>}
-          {replyTo && features.replies && !recorder.recording && (
-            <div className="tg-pill mb-2 flex items-center gap-3 rounded-2xl py-2 pl-3 pr-2">
-              <CornerUpLeft className="h-4 w-4 shrink-0 text-lune-300" aria-hidden />
-              <div className="min-w-0 flex-1 border-l-[3px] border-lune-300 pl-2.5">
-                <p className="truncate text-[13px] font-semibold text-lune-300">Replying to {replyTo.sender_id === myId ? 'yourself' : name}</p>
-                <p className="truncate text-[13px] text-white/70">{replyTo.kind === 'voice' ? '🎤 Voice message' : replyTo.content}</p>
-              </div>
-              <button type="button" onClick={() => setReplyTo(null)} aria-label="Cancel reply" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white"><X size={17} /></button>
-            </div>
-          )}
-          {emojiOpen && !recorder.recording && (
-            <div role="dialog" aria-label="Emoji" className="tg-pill absolute bottom-full left-3 right-3 z-30 mb-2 grid max-h-44 grid-cols-9 gap-0.5 overflow-y-auto rounded-3xl p-2 sm:right-auto sm:w-[22rem]">
-              {EMOJIS.map(emoji => <button key={emoji} type="button" onClick={() => addEmoji(emoji)} className="flex h-9 items-center justify-center rounded-xl text-xl transition-colors hover:bg-white/10" aria-label={`Insert ${emoji}`}>{emoji}</button>)}
-            </div>
-          )}
-          {recorder.recording ? (
-            <div className="flex items-center gap-2">
-              <CircleButton label="Cancel recording" onClick={recorder.cancel} className="text-red-300 hover:text-red-200"><Trash2 size={19} /></CircleButton>
-              <div className="tg-pill flex h-11 min-w-0 flex-1 items-center gap-3 rounded-full px-4">
-                <span role="timer" aria-label="Recording time" className="flex shrink-0 items-center gap-2 text-[15px] font-medium tabular-nums"><span aria-hidden className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-500" />{clock(recorder.elapsed)}</span>
-                <div aria-hidden className="flex h-7 min-w-0 flex-1 items-center justify-end gap-[2px] overflow-hidden">
-                  {recorder.live.map((bar, index) => <span key={index} style={{ height: `${Math.max(14, bar)}%` }} className="w-[3px] shrink-0 rounded-full bg-lune-300" />)}
-                </div>
-              </div>
-              <CircleButton label="Send voice message" onClick={() => void recorder.stop().then(sendVoice)} disabled={sending} className="bg-lune-500 text-white hover:bg-lune-600">
-                {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <SendHorizontal size={19} />}
-              </CircleButton>
-            </div>
-          ) : (
-            <div className="flex items-end gap-2">
-              <CircleButton label="Emoji" onClick={() => setEmojiOpen(open => !open)} className={emojiOpen ? 'text-lune-300' : undefined}><Smile size={21} /></CircleButton>
-              <div className="tg-pill flex min-h-[2.75rem] min-w-0 flex-1 items-center rounded-[1.4rem] px-4 transition-shadow focus-within:shadow-[0_0_0_2px_rgba(192,132,252,0.45)]">
-                <textarea
-                  ref={composer} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={onKeyDown}
-                  maxLength={MAX_LENGTH} rows={1} disabled={sending} enterKeyHint="send" autoComplete="off"
-                  aria-label={`Message ${name}`} placeholder={replyTo ? 'Write your reply' : 'Message'}
-                  className="max-h-[132px] min-h-[2.25rem] w-full resize-none bg-transparent py-[9px] text-[15.5px] leading-snug text-white outline-none placeholder:text-white/45 disabled:opacity-60"
-                />
-              </div>
-              {draft.trim() ? (
-                <CircleButton type="submit" label="Send message" disabled={sending} className="bg-lune-500 text-white hover:bg-lune-600">
-                  {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <SendHorizontal size={19} />}
-                </CircleButton>
-              ) : features.voice ? (
-                <CircleButton label="Record a voice message" onClick={startRecording} disabled={sending}>
-                  {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic size={21} />}
-                </CircleButton>
-              ) : (
-                <CircleButton type="submit" label="Send message" disabled className="bg-lune-500/60 text-white"><SendHorizontal size={19} /></CircleButton>
-              )}
-            </div>
-          )}
-          {draft.length > MAX_LENGTH - 200 && <p className="mt-1 text-right text-xs tabular-nums text-white/50">{draft.length}/{MAX_LENGTH}</p>}
-        </form>
+        <Composer peerId={peer.id} myId={myId} name={name} features={features} replyTo={replyTo} onCancelReply={cancelReply} onSent={appendSent} />
       )}
     </div>
+  );
+};
+
+/** A chat on a phone takes the whole visible screen (above the keyboard), over the bottom bar. */
+const MobileChatShell = ({ children }: { children: ReactNode }) => {
+  const box = useVisualViewport();
+  // The page behind must not scroll while the chat is open, or iPhones slide it when the keyboard opens.
+  useEffect(() => {
+    const root = document.documentElement;
+    const before = root.style.overflow;
+    root.style.overflow = 'hidden';
+    return () => { root.style.overflow = before; };
+  }, []);
+  return createPortal(
+    <div className="fixed inset-x-0 z-[60] flex flex-col overflow-hidden bg-background pt-[env(safe-area-inset-top)]" style={{ top: box.top, height: box.height }}>
+      <ChatWallpaper />{children}
+    </div>,
+    document.body,
   );
 };
 
@@ -802,8 +858,8 @@ const MessagesView = ({ username, myId }: { username?: string; myId: string }) =
         <ConversationList conversations={conversations} loading={listLoading} error={listError} activeUsername={username} myId={myId} onRetry={() => void loadList()} />
       </aside>
       {showThread && isMobile
-        // On phones an open chat takes the whole screen, above the bottom bar, so the message box is never covered.
-        ? createPortal(<div className="fixed inset-0 z-[60] flex h-dvh flex-col overflow-hidden bg-background pt-[env(safe-area-inset-top)]"><ChatWallpaper />{threadContent}</div>, document.body)
+        // On phones an open chat takes the whole visible screen, above the bottom bar and the keyboard.
+        ? <MobileChatShell>{threadContent}</MobileChatShell>
         : <section className={cn('relative z-10 flex min-h-0 min-w-0 flex-col', !showThread && 'hidden md:flex')}>{threadContent}</section>}
     </div>
   );

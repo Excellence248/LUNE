@@ -63,7 +63,7 @@ const AppearancePanel = () => {
 
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/35">Space</p>
             <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4">
-              <Tile label="Default" selected={current.kind === 'default'} onClick={() => choose(area, { kind: 'default' })} style={{ background: backgroundCss({ kind: 'preset', id: area === 'chat' ? DEFAULT_CHAT_PRESET : 'midnight' }) ?? undefined }}>Default</Tile>
+              <Tile label="Default" selected={current.kind === 'default'} onClick={() => choose(area, { kind: 'default' })} style={{ background: PRESETS.find(preset => preset.id === (area === 'chat' ? DEFAULT_CHAT_PRESET : 'midnight'))?.css }}>Default</Tile>
               {PRESETS.filter(preset => preset.group === 'space').map(preset => (
                 <Tile key={preset.id} label={preset.name} selected={sameChoice(current, { kind: 'preset', id: preset.id })} onClick={() => choose(area, { kind: 'preset', id: preset.id })} style={{ background: preset.css }}>
                   <span className="rounded-full bg-black/45 px-2 py-0.5 backdrop-blur">{preset.name}</span>

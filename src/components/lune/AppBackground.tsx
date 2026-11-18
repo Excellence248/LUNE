@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { backgroundCss, useAppearance } from '@/lib/appearance';
+import { backgroundCss, useAppearance, useIsPortrait } from '@/lib/appearance';
 
 /**
  * The member's own app background, behind everything. With the default choice it renders nothing and
@@ -8,7 +8,8 @@ import { backgroundCss, useAppearance } from '@/lib/appearance';
  */
 const AppBackground = () => {
   const { app, appDim } = useAppearance();
-  const css = app.kind === 'default' ? null : backgroundCss(app);
+  const portrait = useIsPortrait();
+  const css = app.kind === 'default' ? null : backgroundCss(app, undefined, portrait);
 
   useEffect(() => {
     const root = document.documentElement;
