@@ -4,7 +4,7 @@ import type { BadgeTier } from '@/lib/badges';
 
 const RPC_URL = (import.meta.env.VITE_SOLANA_RPC_URL as string | undefined) || 'https://api.mainnet-beta.solana.com';
 
-interface Order { treasury: string; mint: string; amount: number; decimals: number; }
+interface Order { reference: string; treasury: string; mint: string; amount: number; decimals: number; }
 export type PaymentStep = 'connecting' | 'preparing' | 'signing' | 'confirming';
 
 const invoke = <T>(body: object): Promise<T> => api<T>('/api/payments', { method: 'POST', body });
@@ -15,7 +15,7 @@ export const payWithUsdc = async (tier: BadgeTier, walletName: WalletName, onSte
   if (!wallet) throw new Error(`${walletName} wallet was not found. Install it or try the other wallet.`);
 
   // Loaded on demand: these libraries are large and only needed at checkout.
-  const [{ Connection, Keypair, PublicKey, Transaction }, spl] = await Promise.all([import('@solana/web3.js'), import('@solana/spl-token')]);
+  const [{ Connection, PublicKey, Transaction }, spl] = await Promise.all([import('@solana/web3.js'), import('@solana/spl-token')]);
 
   onStep('connecting');
   await wallet.connect();
@@ -23,8 +23,9 @@ export const payWithUsdc = async (tier: BadgeTier, walletName: WalletName, onSte
   const payer = new PublicKey(wallet.publicKey.toBase58());
 
   onStep('preparing');
-  const reference = Keypair.generate().publicKey;
-  const order = await invoke<Order>({ action: 'create', tier, reference: reference.toBase58() });
+  // The server creates the order and its unique reference; the transfer carries it so the payment can be traced.
+  const order = await invoke<Order>({ action: 'create', tier });
+  const reference = new PublicKey(order.reference);
   const mint = new PublicKey(order.mint);
   const treasury = new PublicKey(order.treasury);
   const connection = new Connection(RPC_URL, 'confirmed');

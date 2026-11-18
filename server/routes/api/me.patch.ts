@@ -51,6 +51,8 @@ export default defineHandler(async (event) => {
     return profile;
   } catch (error) {
     if ((error as { code?: string }).code === '23505') throw new HTTPError('That username is already taken. Please choose another.', { status: 409 });
+    // Raised by the database for a display name that is reserved for someone else.
+    if ((error as { code?: string }).code === '23514') throw new HTTPError('That name is reserved. Please choose another.', { status: 400 });
     throw error;
   }
 });

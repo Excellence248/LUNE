@@ -58,6 +58,29 @@ export const base58Decode = (value: string) => {
   return Buffer.from(bytes.reverse());
 };
 
+export const base58Encode = (bytes: Uint8Array) => {
+  const digits: number[] = [];
+  for (const byte of bytes) {
+    let carry = byte;
+    for (let i = 0; i < digits.length; i++) {
+      carry += digits[i] << 8;
+      digits[i] = carry % 58;
+      carry = Math.floor(carry / 58);
+    }
+    while (carry) {
+      digits.push(carry % 58);
+      carry = Math.floor(carry / 58);
+    }
+  }
+  let out = '';
+  for (const byte of bytes) {
+    if (byte) break;
+    out += '1';
+  }
+  for (let i = digits.length - 1; i >= 0; i--) out += ALPHABET[digits[i]];
+  return out;
+};
+
 export const isWalletAddress = (value: unknown): value is string => {
   if (typeof value !== 'string' || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value)) return false;
   try {
