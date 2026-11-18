@@ -16,7 +16,7 @@ export interface Plan {
 
 export const PLANS: Plan[] = [
   {
-    id: 'blue', name: 'Lune Blue', price: '$8', period: '/ month', tagline: 'For people who want to stand out.',
+    id: 'blue', name: 'Lune Blue', price: '$5', period: '/ month', tagline: 'For people who want to stand out.',
     perks: ['Blue verified tick on your profile and posts', 'Priority placement in replies', 'Longer posts and bigger uploads', 'Edit and pin your posts', 'Early access to new features'],
     checkoutUrl: import.meta.env.VITE_CHECKOUT_BLUE_URL as string | undefined,
   },

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BadgeCheck, Check, Loader2, Wallet } from 'lucide-react';
 import Layout from '@/components/lune/Layout';
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { useWallet } from '@/context/WalletContext';
 import { useBadge } from '@/context/BadgesContext';
 import { PLANS, type Plan, type BadgeTier } from '@/lib/badges';
+import { api } from '@/lib/api';
 import { payWithUsdc, type PaymentStep } from '@/lib/crypto-payment';
 import type { WalletName } from '@/lib/solana-wallet';
 import { showError, showSuccess } from '@/utils/toast';
@@ -17,7 +18,10 @@ const STEP_TEXT: Record<PaymentStep, string> = {
   signing: 'Approve the payment in your wallet…', confirming: 'Waiting for the blockchain to confirm…',
 };
 
-const checkoutHref = (plan: Plan, userId: string, email: string) => {
+interface Quote { firstPayment: boolean; discount: number; prices: Record<string, { list: number; price: number }> }
+const usd = (value: number) => `$${Number.isInteger(value) ? value : value.toFixed(2)}`;
+
+const checkoutHref =(plan: Plan, userId: string, email: string) => {
   if (!plan.checkoutUrl) return null;
   try {
     const url = new URL(plan.checkoutUrl);
@@ -32,6 +36,17 @@ const Premium = () => {
   const current = useBadge(user?.username);
   const [paying, setPaying] = useState<{ tier: BadgeTier; step: PaymentStep } | null>(null);
   const [pickWallet, setPickWallet] = useState<BadgeTier | null>(null);
+  const [quote, setQuote] = useState<Quote | null>(null);
+
+  // What this member pays: the server applies the first-payment discount, so the page only shows it.
+  useEffect(() => {
+    if (!user) { setQuote(null); return; }
+    let active = true;
+    api<Quote>('/api/payments', { method: 'POST', body: { action: 'quote' } })
+      .then(data => { if (active) setQuote(data); })
+      .catch(() => { if (active) setQuote(null); });
+    return () => { active = false; };
+  }, [user?.id]);
 
   const pay = async (tier: BadgeTier, wallet: WalletName) => {
     setPickWallet(null);
@@ -63,12 +78,21 @@ const Premium = () => {
         <div className="grid gap-5 md:grid-cols-2">
           {PLANS.map(plan => {
             const href = user ? checkoutHref(plan, user.id, user.email) : null;
+            const price = quote?.prices[plan.id];
+            const discounted = !!quote?.firstPayment && !!price && price.price < price.list;
             const owned = current === plan.id || (current === 'gold' && plan.id === 'blue');
             return (
               <section key={plan.id} className={`lune-card flex flex-col p-6 sm:p-8 ${plan.id === 'gold' ? 'ring-1 ring-amber-300/40' : ''}`} aria-label={plan.name}>
                 <div className="flex items-center gap-2"><BadgeSeal tier={plan.id} className="h-6 w-6" /><h2 className="font-display text-xl font-bold">{plan.name}</h2></div>
                 <p className="mt-1 text-sm text-white/50">{plan.tagline}</p>
-                <p className="mt-5"><span className="font-display text-4xl font-bold">{plan.price}</span> <span className="text-white/45">{plan.period}</span></p>
+                {discounted && price ? (
+                  <div className="mt-5">
+                    <p><span className="mr-2 text-xl text-white/35 line-through">{usd(price.list)}</span><span className="font-display text-4xl font-bold">{usd(price.price)}</span> <span className="text-white/45">first month</span></p>
+                    <p className="mt-1.5 inline-block rounded-full bg-emerald-400/15 px-2.5 py-0.5 text-xs font-semibold text-emerald-300">{Math.round((quote?.discount ?? 0.1) * 100)}% off your first payment · then {usd(price.list)} / month</p>
+                  </div>
+                ) : (
+                  <p className="mt-5"><span className="font-display text-4xl font-bold">{plan.price}</span> <span className="text-white/45">{plan.period}</span></p>
+                )}
                 <ul className="my-6 flex-1 space-y-3 text-sm text-white/75">
                   {plan.perks.map(perk => <li key={perk} className="flex gap-3"><Check size={16} className="mt-0.5 shrink-0 text-lune-300" />{perk}</li>)}
                 </ul>
@@ -96,7 +120,7 @@ const Premium = () => {
           })}
         </div>
 
-        <p className="mt-6 text-center text-xs leading-relaxed text-white/35">Each payment adds 30 days of verification. Your tick appears as soon as the payment is confirmed.</p>
+        <p className="mt-6 text-center text-xs leading-relaxed text-white/35">Each payment adds 30 days of verification, and your first payment is 10% off. Your tick appears as soon as the payment is confirmed.</p>
       </div>
     </Layout>
   );
