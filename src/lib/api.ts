@@ -40,3 +40,21 @@ export const orNull = async <T>(request: Promise<T>) => {
     throw error;
   }
 };
+
+/** Sends a recorded voice note to a member. Returns the new message (with its waveform and length). */
+export const uploadVoice = async <T>(memberId: string, blob: Blob, durationMs: number, peaks: number[]): Promise<T> => {
+  let res: Response;
+  try {
+    res = await fetch(`/api/messages/${memberId}/voice`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': blob.type || 'audio/webm', 'X-Duration-Ms': String(Math.round(durationMs)), 'X-Peaks': peaks.join(',') },
+      body: blob,
+    });
+  } catch {
+    throw new ApiError('The server could not be reached. Check your connection and try again.', 0);
+  }
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new ApiError(data?.message || 'Your voice message could not be sent. Please try again.', res.status, data?.code);
+  return data as T;
+};

@@ -25,8 +25,9 @@ export default defineHandler(async (event) => {
     where conversation_id = ${conversation.id} and sender_id = ${other} and read_at is null`;
   const rows = await sql`
     select * from (
-      select d.id, d.sender_id, d.content, d.created_at, d.read_at
-      from public.direct_messages d where d.conversation_id = ${conversation.id}
+      select d.id, d.sender_id, d.kind, d.content, d.created_at, d.read_at, d.voice_id, v.duration_ms, v.peaks
+      from public.direct_messages d left join public.voice_notes v on v.id = d.voice_id
+      where d.conversation_id = ${conversation.id}
       order by d.created_at desc, d.id desc limit 100
     ) latest order by created_at, id`;
   return { member, messages: rows };

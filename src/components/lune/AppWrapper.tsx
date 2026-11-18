@@ -11,6 +11,7 @@ import { BadgesProvider } from "@/context/BadgesContext";
 import { SocialProvider } from "@/context/SocialContext";
 import { CallProvider } from "@/context/CallContext";
 import CallOverlay from "./CallOverlay";
+import AppBackground from "./AppBackground";
 import CosmicFX from "./CosmicFX";
 
 const queryClient = new QueryClient();
@@ -24,6 +25,7 @@ export const AppWrapper = ({ children }: { children: React.ReactNode }) => {
             <BadgesProvider>
             <TooltipProvider>
               <CallProvider>
+                <AppBackground />
                 <CosmicFX />
                 {children}
                 <CallOverlay />

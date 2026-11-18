@@ -21,6 +21,7 @@ export const LIMITS = {
   authEmail: [5, 3600],
   age: [10, 3600],
   message: [60, 600],
+  voice: [30, 600],
   call: [20, 600],
   callPoll: [900, 600],
   callSignal: [600, 600],
