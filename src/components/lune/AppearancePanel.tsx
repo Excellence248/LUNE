@@ -61,11 +61,12 @@ const AppearancePanel = () => {
               <p className="text-sm text-white/45">{hint}</p>
             </div>
 
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/35">Space</p>
             <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4">
               <Tile label="Default" selected={current.kind === 'default'} onClick={() => choose(area, { kind: 'default' })} style={{ background: backgroundCss({ kind: 'preset', id: area === 'chat' ? DEFAULT_CHAT_PRESET : 'midnight' }) ?? undefined }}>Default</Tile>
-              {PRESETS.map(preset => (
+              {PRESETS.filter(preset => preset.group === 'space').map(preset => (
                 <Tile key={preset.id} label={preset.name} selected={sameChoice(current, { kind: 'preset', id: preset.id })} onClick={() => choose(area, { kind: 'preset', id: preset.id })} style={{ background: preset.css }}>
-                  <span className="rounded-full bg-black/40 px-2 py-0.5 backdrop-blur">{preset.name}</span>
+                  <span className="rounded-full bg-black/45 px-2 py-0.5 backdrop-blur">{preset.name}</span>
                 </Tile>
               ))}
               <Tile label="Upload your own picture" selected={current.kind === 'image'} onClick={() => files.current[area]?.click()} style={current.kind === 'image' ? { background: backgroundCss(current) ?? undefined } : undefined}>
@@ -74,6 +75,14 @@ const AppearancePanel = () => {
                 </span>
               </Tile>
               <input ref={element => { files.current[area] = element; }} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; void upload(area, file); }} />
+            </div>
+            <p className="pt-1 text-xs font-semibold uppercase tracking-[0.16em] text-white/35">Colours</p>
+            <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4">
+              {PRESETS.filter(preset => preset.group === 'color').map(preset => (
+                <Tile key={preset.id} label={preset.name} selected={sameChoice(current, { kind: 'preset', id: preset.id })} onClick={() => choose(area, { kind: 'preset', id: preset.id })} style={{ background: preset.css }}>
+                  <span className="rounded-full bg-black/40 px-2 py-0.5 backdrop-blur">{preset.name}</span>
+                </Tile>
+              ))}
             </div>
 
             {current.kind !== 'default' && (
@@ -85,6 +94,12 @@ const AppearancePanel = () => {
                   className="h-1.5 flex-1 cursor-pointer accent-purple-400"
                 />
                 <span className="w-10 text-right tabular-nums text-white/45">{Math.round(appearance[dim] * 100)}%</span>
+              </label>
+            )}
+            {area === 'chat' && (
+              <label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm">
+                <span><span className="font-medium text-white/85">Space doodles</span><span className="block text-xs text-white/40">A faint pattern of moons, stars, planets and rockets over the wallpaper.</span></span>
+                <input type="checkbox" checked={appearance.doodles} onChange={event => { try { setAppearance({ doodles: event.target.checked }); } catch { /* storage full */ } }} className="h-5 w-5 shrink-0 cursor-pointer accent-purple-400" aria-label="Show space doodles on chats" />
               </label>
             )}
           </section>

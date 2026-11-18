@@ -15,14 +15,16 @@ export interface Appearance {
   /** How much the picture is darkened so text stays readable, 0 to 0.8. */
   appDim: number;
   chatDim: number;
+  /** Draw the space doodle pattern over the chat wallpaper (like Telegram's chat pattern). */
+  doodles: boolean;
 }
 
-export interface Preset { id: string; name: string; css: string }
+export interface Preset { id: string; name: string; css: string; group: 'space' | 'color' }
 
 const blob = (size: string, at: string, color: string) => `radial-gradient(${size} at ${at}, ${color}, transparent 62%)`;
 
-export const PRESETS: Preset[] = [
-  { id: 'aurora', name: 'Aurora', css: `${blob('60rem 40rem', '15% 10%', 'rgba(168,85,247,.55)')}, ${blob('50rem 35rem', '90% 90%', 'rgba(59,130,246,.45)')}, ${blob('40rem 30rem', '70% 20%', 'rgba(236,72,153,.28)')}, #0b0618` },
+const COLORS: Omit<Preset, 'group'>[] = [
+  { id: 'aurora', name: 'Violet haze', css: `${blob('60rem 40rem', '15% 10%', 'rgba(168,85,247,.55)')}, ${blob('50rem 35rem', '90% 90%', 'rgba(59,130,246,.45)')}, ${blob('40rem 30rem', '70% 20%', 'rgba(236,72,153,.28)')}, #0b0618` },
   { id: 'sunset', name: 'Sunset', css: `${blob('55rem 40rem', '80% 100%', 'rgba(251,146,60,.6)')}, ${blob('50rem 35rem', '10% 0%', 'rgba(147,51,234,.6)')}, ${blob('40rem 30rem', '60% 40%', 'rgba(244,63,94,.35)')}, #14061f` },
   { id: 'ocean', name: 'Ocean', css: `${blob('60rem 40rem', '20% 90%', 'rgba(20,184,166,.5)')}, ${blob('50rem 35rem', '85% 10%', 'rgba(59,130,246,.55)')}, #04111f` },
   { id: 'forest', name: 'Forest', css: `${blob('55rem 40rem', '80% 90%', 'rgba(34,197,94,.4)')}, ${blob('45rem 35rem', '10% 10%', 'rgba(13,148,136,.45)')}, #04140f` },
@@ -32,10 +34,30 @@ export const PRESETS: Preset[] = [
   { id: 'graphite', name: 'Graphite', css: `${blob('60rem 40rem', '30% 0%', 'rgba(148,163,184,.25)')}, ${blob('40rem 30rem', '100% 100%', 'rgba(100,116,139,.25)')}, #0b0d12` },
 ];
 
-export const DEFAULT_CHAT_PRESET = 'aurora';
+/** Original space scenes drawn by scripts/generate-backgrounds.mjs and served from /backgrounds. */
+const scene = (file: string) => `url("/backgrounds/${file}.svg") center / cover no-repeat, #05030f`;
+const SPACE: Omit<Preset, 'group'>[] = [
+  { id: 'nebula', name: 'Nebula', css: scene('nebula') },
+  { id: 'moonrise', name: 'Moonrise', css: scene('moonrise') },
+  { id: 'northern', name: 'Aurora', css: scene('aurora') },
+  { id: 'galaxy', name: 'Galaxy', css: scene('galaxy') },
+  { id: 'giant', name: 'Ringed planet', css: scene('planet') },
+  { id: 'comet', name: 'Comet', css: scene('comet') },
+  { id: 'eclipse', name: 'Eclipse', css: scene('eclipse') },
+  { id: 'stars', name: 'Constellations', css: scene('constellations') },
+];
+
+export const PRESETS: Preset[] = [
+  ...SPACE.map(preset => ({ ...preset, group: 'space' as const })),
+  ...COLORS.map(preset => ({ ...preset, group: 'color' as const })),
+];
+
+export const DEFAULT_CHAT_PRESET = 'nebula';
+/** The faint pattern of moons, stars, planets and rockets drawn over the chat wallpaper. */
+export const DOODLES_URL = '/backgrounds/doodles.svg';
 const KEY = 'lune_appearance_v1';
 
-const DEFAULT: Appearance = { app: { kind: 'default' }, chat: { kind: 'default' }, appDim: 0.45, chatDim: 0.25 };
+const DEFAULT: Appearance = { app: { kind: 'default' }, chat: { kind: 'default' }, appDim: 0.45, chatDim: 0.25, doodles: true };
 
 const isBackground = (value: unknown): value is Background => {
   if (!value || typeof value !== 'object') return false;
@@ -56,6 +78,7 @@ const read = (): Appearance => {
       chat: isBackground(parsed.chat) ? parsed.chat : DEFAULT.chat,
       appDim: clampDim(parsed.appDim, DEFAULT.appDim),
       chatDim: clampDim(parsed.chatDim, DEFAULT.chatDim),
+      doodles: typeof parsed.doodles === 'boolean' ? parsed.doodles : DEFAULT.doodles,
     };
   } catch {
     return DEFAULT;

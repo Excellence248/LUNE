@@ -12,13 +12,13 @@ export default defineHandler(async (event) => {
 
   const withVoice = () => sql`
     select o.id as user_id, o.username, o.display_name, public.avatar_src(o) as avatar_url,
-      case when lm.kind = 'voice' then '🎤 Voice message' else lm.content end as last_content, lm.sender_id as last_sender_id, lm.created_at as last_at,
+      case when lm.kind = 'voice' then '🎤 Voice message' else lm.content end as last_content, lm.sender_id as last_sender_id, lm.created_at as last_at, (lm.read_at is not null) as last_read,
       (select count(*)::int from public.direct_messages d
         where d.conversation_id = c.id and d.sender_id <> ${me} and d.read_at is null) as unread
     from public.conversations c
     join public.profiles o on o.id = case when c.member_a = ${me} then c.member_b else c.member_a end
     join lateral (
-      select d.kind, d.content, d.sender_id, d.created_at from public.direct_messages d
+      select d.kind, d.content, d.sender_id, d.created_at, d.read_at from public.direct_messages d
       where d.conversation_id = c.id order by d.created_at desc, d.id desc limit 1
     ) lm on true
     where (c.member_a = ${me} or c.member_b = ${me}) and not public.is_blocked_between(${me}, o.id)
@@ -28,13 +28,13 @@ export default defineHandler(async (event) => {
   // The same list for a database that does not have voice notes yet (its migration is still pending).
   const textOnly = () => sql`
     select o.id as user_id, o.username, o.display_name, public.avatar_src(o) as avatar_url,
-      lm.content as last_content, lm.sender_id as last_sender_id, lm.created_at as last_at,
+      lm.content as last_content, lm.sender_id as last_sender_id, lm.created_at as last_at, (lm.read_at is not null) as last_read,
       (select count(*)::int from public.direct_messages d
         where d.conversation_id = c.id and d.sender_id <> ${me} and d.read_at is null) as unread
     from public.conversations c
     join public.profiles o on o.id = case when c.member_a = ${me} then c.member_b else c.member_a end
     join lateral (
-      select d.content, d.sender_id, d.created_at from public.direct_messages d
+      select d.content, d.sender_id, d.created_at, d.read_at from public.direct_messages d
       where d.conversation_id = c.id order by d.created_at desc, d.id desc limit 1
     ) lm on true
     where (c.member_a = ${me} or c.member_b = ${me}) and not public.is_blocked_between(${me}, o.id)
