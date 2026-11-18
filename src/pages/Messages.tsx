@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Loader2, MessageCircle, Search, SendHorizontal } from 'lucide-react';
-import { format, formatDistanceToNowStrict } from 'date-fns';
+import { ArrowLeft, Loader2, MessageCircle, Phone, Search, SendHorizontal, Video } from 'lucide-react';
+import { format, formatDistanceToNowStrict, isSameDay, isToday, isYesterday } from 'date-fns';
 import Layout from '@/components/lune/Layout';
 import VerifiedBadge from '@/components/lune/VerifiedBadge';
 import { EmptyState } from '@/components/lune/Brand';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { useSocial, type PublicProfile } from '@/context/SocialContext';
+import { useCall } from '@/context/CallContext';
 import { useWallet } from '@/context/WalletContext';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { announceMessagesChanged } from '@/hooks/useUnreadMessages';
 import { ApiError, api } from '@/lib/api';
 import { displayNameOf } from '@/lib/names';
@@ -131,8 +133,20 @@ const ConversationList = ({ conversations, loading, error, activeUsername, myId,
   );
 };
 
+const MINUTES_5 = 5 * 60 * 1000;
+const sameRun = (a?: ThreadMessage, b?: ThreadMessage) =>
+  !!a && !!b && a.sender_id === b.sender_id && isSameDay(new Date(a.created_at), new Date(b.created_at)) && new Date(b.created_at).getTime() - new Date(a.created_at).getTime() < MINUTES_5;
+
+const dayLabel = (iso: string) => {
+  const date = new Date(iso);
+  if (isToday(date)) return 'Today';
+  if (isYesterday(date)) return 'Yesterday';
+  return format(date, date.getFullYear() === new Date().getFullYear() ? 'EEEE, d MMM' : 'd MMM yyyy');
+};
+
 /** Right pane: one conversation. Polls for new messages while the tab is visible. */
 const Thread = ({ peer, myId, onActivity }: { peer: PublicProfile; myId: string; onActivity: () => void }) => {
+  const { call, busy: callBusy, startCall } = useCall();
   const [member, setMember] = useState<ThreadMember | null>(null);
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [ready, setReady] = useState(false);
@@ -141,6 +155,7 @@ const Thread = ({ peer, myId, onActivity }: { peer: PublicProfile; myId: string;
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState('');
   const scroller = useRef<HTMLDivElement>(null);
+  const composer = useRef<HTMLTextAreaElement>(null);
   const stick = useRef(true);
   const sendingRef = useRef(false);
   const lastSeen = useRef('');
@@ -175,6 +190,14 @@ const Thread = ({ peer, myId, onActivity }: { peer: PublicProfile; myId: string;
     if (box && stick.current) box.scrollTop = box.scrollHeight;
   }, [messages]);
 
+  // The message box grows with what you type, up to about five lines.
+  useEffect(() => {
+    const box = composer.current;
+    if (!box) return;
+    box.style.height = 'auto';
+    box.style.height = `${Math.min(box.scrollHeight, 132)}px`;
+  }, [draft]);
+
   const send = async (event?: FormEvent) => {
     event?.preventDefault();
     const content = draft.trim();
@@ -193,6 +216,7 @@ const Thread = ({ peer, myId, onActivity }: { peer: PublicProfile; myId: string;
       });
       announceMessagesChanged();
       onActivity();
+      composer.current?.focus();
     } catch (cause) {
       setSendError(cause instanceof Error ? cause.message : 'Your message could not be sent. Please try again.');
     } finally {
@@ -208,42 +232,72 @@ const Thread = ({ peer, myId, onActivity }: { peer: PublicProfile; myId: string;
   const blocked = !!member?.blocked;
   const lastMineIndex = messages.reduce((found, message, index) => (message.sender_id === myId ? index : found), -1);
   const shown = member ?? { username: peer.username, display_name: peer.display_name ?? '', avatar_url: peer.avatar_url };
+  const name = displayNameOf(shown);
+  const canCall = !blocked && !call && !callBusy;
+  const callPeer = { id: peer.id, username: peer.username, display_name: shown.display_name, avatar_url: shown.avatar_url };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex items-center gap-3 border-b border-white/10 px-4 py-3">
-        <Button asChild variant="ghost" size="icon" className="rounded-full md:hidden"><Link to="/messages" aria-label="Back to conversations"><ArrowLeft size={18} /></Link></Button>
-        <Link to={`/profile/${encodeURIComponent(peer.username)}`} className="flex min-w-0 items-center gap-3 hover:opacity-90">
+      <header className="flex items-center gap-2 border-b border-white/10 bg-background/60 px-2 py-2.5 backdrop-blur sm:px-4">
+        <Button asChild variant="ghost" size="icon" className="shrink-0 rounded-full md:hidden"><Link to="/messages" aria-label="Back to conversations"><ArrowLeft size={20} /></Link></Button>
+        <Link to={`/profile/${encodeURIComponent(peer.username)}`} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl py-1 pr-2 hover:opacity-90">
           <Person member={shown} />
-          <div className="min-w-0"><p className="truncate text-sm font-semibold">{displayNameOf(shown)} <VerifiedBadge username={peer.username} /></p><p className="truncate text-xs text-white/40">@{peer.username}</p></div>
+          <div className="min-w-0"><p className="truncate text-[15px] font-semibold leading-tight">{name} <VerifiedBadge username={peer.username} /></p><p className="truncate text-xs text-white/40">@{peer.username}</p></div>
         </Link>
+        <div className="flex shrink-0 items-center gap-1">
+          <Button type="button" variant="ghost" size="icon" disabled={!canCall} onClick={() => void startCall(callPeer, 'audio')} aria-label={`Voice call ${name}`} title="Voice call" className="rounded-full text-white/70 hover:text-white"><Phone size={18} /></Button>
+          <Button type="button" variant="ghost" size="icon" disabled={!canCall} onClick={() => void startCall(callPeer, 'video')} aria-label={`Video call ${name}`} title="Video call" className="rounded-full text-white/70 hover:text-white"><Video size={19} /></Button>
+        </div>
       </header>
 
-      <div ref={scroller} onScroll={event => { const box = event.currentTarget; stick.current = box.scrollHeight - box.scrollTop - box.clientHeight < 80; }} className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-4 py-4" aria-live="polite" aria-label={`Conversation with ${displayNameOf(shown)}`}>
+      <div ref={scroller} onScroll={event => { const box = event.currentTarget; stick.current = box.scrollHeight - box.scrollTop - box.clientHeight < 80; }} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 sm:px-5" aria-live="polite" aria-label={`Conversation with ${name}`}>
         {!ready && <div role="status" className="flex items-center justify-center gap-2 py-10 text-sm text-white/45"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>}
         {ready && loadError && !messages.length && <p role="alert" className="py-10 text-center text-sm text-red-200">{loadError}</p>}
-        {ready && !loadError && !messages.length && <p className="py-10 text-center text-sm text-white/40">No messages yet. Say hi to {displayNameOf(shown)} 👋</p>}
+        {ready && !loadError && !messages.length && (
+          <div className="flex flex-col items-center gap-3 py-12 text-center">
+            <Person member={shown} size="h-16 w-16" />
+            <p className="text-sm text-white/45">No messages yet. Say hi to {name} 👋</p>
+          </div>
+        )}
         {messages.map((message, index) => {
           const mine = message.sender_id === myId;
+          const previous = messages[index - 1];
+          const next = messages[index + 1];
+          const startsRun = !sameRun(previous, message);
+          const endsRun = !sameRun(message, next);
+          const newDay = !previous || !isSameDay(new Date(previous.created_at), new Date(message.created_at));
           return (
-            <div key={message.id} className={cn('flex flex-col', mine ? 'items-end' : 'items-start')}>
-              <div className={cn('selectable max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-[15px] leading-snug sm:max-w-[70%]', mine ? 'rounded-br-md bg-lune-500 text-white' : 'rounded-bl-md bg-white/[0.07] text-white/90')}>{message.content}</div>
-              <time dateTime={message.created_at} title={new Date(message.created_at).toLocaleString()} className="mt-0.5 px-1 text-[11px] text-white/30">
-                {format(new Date(message.created_at), 'p')}{mine && index === lastMineIndex && message.read_at ? ' · Seen' : ''}
-              </time>
+            <div key={message.id}>
+              {newDay && <div className="my-4 flex justify-center"><span className="rounded-full bg-white/[0.06] px-3 py-1 text-[11px] font-medium text-white/45">{dayLabel(message.created_at)}</span></div>}
+              <div className={cn('flex flex-col', mine ? 'items-end' : 'items-start', startsRun && !newDay ? 'mt-3' : 'mt-0.5')}>
+                <div className={cn('selectable max-w-[82%] whitespace-pre-wrap break-words rounded-[1.25rem] px-3.5 py-2 text-[15px] leading-snug sm:max-w-[70%]',
+                  mine ? 'bg-lune-500 text-white' : 'bg-white/[0.08] text-white/90',
+                  mine ? 'rounded-br-md' : 'rounded-bl-md',
+                  !startsRun && (mine ? 'rounded-tr-md' : 'rounded-tl-md'))}>{message.content}</div>
+                {endsRun && (
+                  <time dateTime={message.created_at} title={new Date(message.created_at).toLocaleString()} className="mt-1 px-1 text-[11px] text-white/30">
+                    {format(new Date(message.created_at), 'p')}{mine && index === lastMineIndex && message.read_at ? ' · Seen' : ''}
+                  </time>
+                )}
+              </div>
             </div>
           );
         })}
       </div>
 
       {blocked ? (
-        <p role="status" className="border-t border-white/10 px-4 py-3 text-center text-sm text-white/50">You can’t message this account.</p>
+        <p role="status" className="border-t border-white/10 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-center text-sm text-white/50">You can’t message this account.</p>
       ) : (
-        <form onSubmit={send} className="border-t border-white/10 p-3">
+        <form onSubmit={send} className="border-t border-white/10 bg-background/60 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2.5 backdrop-blur">
           {sendError && <p role="alert" className="mb-2 rounded-xl border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-200">{sendError}</p>}
-          <div className="flex items-end gap-2">
-            <Textarea value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={onKeyDown} maxLength={MAX_LENGTH} rows={1} disabled={sending} aria-label={`Message ${displayNameOf(shown)}`} placeholder="Write a message…  (Enter to send, Shift+Enter for a new line)" className="max-h-32 min-h-[2.75rem] resize-none rounded-2xl border-white/10 bg-white/[0.03] py-2.5" />
-            <Button type="submit" disabled={!draft.trim() || sending} aria-label="Send message" className="h-11 w-11 shrink-0 rounded-full bg-lune-500 p-0 hover:bg-lune-600">
+          <div className="flex items-end gap-2 rounded-[1.6rem] border border-white/10 bg-white/[0.05] py-1.5 pl-4 pr-1.5 transition-colors focus-within:border-lune-400/50 focus-within:bg-white/[0.07]">
+            <textarea
+              ref={composer} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={onKeyDown}
+              maxLength={MAX_LENGTH} rows={1} disabled={sending} enterKeyHint="send" autoComplete="off"
+              aria-label={`Message ${name}`} placeholder="Message…"
+              className="max-h-[132px] min-h-[2.25rem] flex-1 resize-none self-center bg-transparent py-1.5 text-[15px] leading-snug text-white outline-none placeholder:text-white/35 disabled:opacity-60"
+            />
+            <Button type="submit" disabled={!draft.trim() || sending} aria-label="Send message" className="h-9 w-9 shrink-0 rounded-full bg-lune-500 p-0 hover:bg-lune-600 disabled:bg-white/10 disabled:text-white/35">
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizontal className="h-4 w-4" />}
             </Button>
           </div>
@@ -253,6 +307,7 @@ const Thread = ({ peer, myId, onActivity }: { peer: PublicProfile; myId: string;
     </div>
   );
 };
+
 
 const MessagesView = ({ username, myId }: { username?: string; myId: string }) => {
   const { getProfileByUsername } = useSocial();
@@ -292,12 +347,9 @@ const MessagesView = ({ username, myId }: { username?: string; myId: string }) =
   }, [username, getProfileByUsername]);
 
   const showThread = !!username;
-  return (
-    <div className="mx-auto grid h-[calc(100dvh-10rem)] min-h-[30rem] max-w-5xl overflow-hidden rounded-3xl border border-white/10 glass-soft md:grid-cols-[19rem_minmax(0,1fr)]">
-      <aside className={cn('flex min-h-0 flex-col border-white/10 md:border-r', showThread && 'hidden md:flex')}>
-        <ConversationList conversations={conversations} loading={listLoading} error={listError} activeUsername={username} myId={myId} onRetry={() => void loadList()} />
-      </aside>
-      <section className={cn('flex min-h-0 flex-col', !showThread && 'hidden md:flex')}>
+  const isMobile = useIsMobile();
+  const threadContent = (
+    <>
         {!showThread ? (
           <div className="flex flex-1 items-center justify-center p-6"><EmptyState icon={MessageCircle} title="Your messages">Pick a conversation, or search for someone to start a new one.</EmptyState></div>
         ) : peerState === 'ready' && peer ? (
@@ -312,7 +364,18 @@ const MessagesView = ({ username, myId }: { username?: string; myId: string }) =
             <Button asChild variant="outline"><Link to="/messages">Back to messages</Link></Button>
           </div>
         )}
-      </section>
+    </>
+  );
+
+  return (
+    <div className="mx-auto grid h-[calc(100dvh-10rem)] min-h-[30rem] max-w-5xl overflow-hidden rounded-3xl border border-white/10 glass-soft md:grid-cols-[19rem_minmax(0,1fr)]">
+      <aside className={cn('flex min-h-0 flex-col border-white/10 md:border-r', showThread && 'hidden md:flex')}>
+        <ConversationList conversations={conversations} loading={listLoading} error={listError} activeUsername={username} myId={myId} onRetry={() => void loadList()} />
+      </aside>
+      {showThread && isMobile
+        // On phones an open chat takes the whole screen, above the bottom bar, so the message box is never covered.
+        ? createPortal(<div className="fixed inset-0 z-[60] flex h-dvh flex-col bg-background pt-[env(safe-area-inset-top)]">{threadContent}</div>, document.body)
+        : <section className={cn('flex min-h-0 flex-col', !showThread && 'hidden md:flex')}>{threadContent}</section>}
     </div>
   );
 };

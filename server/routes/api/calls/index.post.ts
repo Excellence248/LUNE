@@ -1,0 +1,22 @@
+import { defineHandler } from 'nitro';
+import { HTTPError, readBody } from 'nitro/h3';
+import { requirePermission } from '../../../utils/auth';
+import { callError, getCall, isUuid } from '../../../utils/calls';
+import { sql } from '../../../utils/db';
+import { rateLimit } from '../../../utils/limits';
+
+// Body: { to: memberId, kind: 'audio' | 'video' }. Starts ringing that member and returns the call.
+// Needs call.start (so suspended and unconfirmed-age members are refused), and is refused when either
+// side has blocked the other or is already on a call.
+export default defineHandler(async (event) => {
+  const me = await requirePermission(event, 'call.start');
+  await rateLimit('call', me.id);
+  const { to, kind } = ((await readBody<{ to?: unknown; kind?: unknown }>(event)) ?? {}) as { to?: unknown; kind?: unknown };
+  if (!isUuid(to) || (kind !== 'audio' && kind !== 'video')) throw new HTTPError('Invalid call.', { status: 400 });
+  try {
+    const [started] = await sql`select id from public.start_call(${me.id}, ${to}, ${kind})`;
+    return await getCall(started.id as string, me.id);
+  } catch (error) {
+    return callError(error);
+  }
+});

@@ -9,6 +9,8 @@ import { WalletProvider } from "@/context/WalletContext";
 import { SessionContextProvider } from "@/context/SessionContext";
 import { BadgesProvider } from "@/context/BadgesContext";
 import { SocialProvider } from "@/context/SocialContext";
+import { CallProvider } from "@/context/CallContext";
+import CallOverlay from "./CallOverlay";
 import CosmicFX from "./CosmicFX";
 
 const queryClient = new QueryClient();
@@ -21,8 +23,11 @@ export const AppWrapper = ({ children }: { children: React.ReactNode }) => {
           <SocialProvider>
             <BadgesProvider>
             <TooltipProvider>
-              <CosmicFX />
-              {children}
+              <CallProvider>
+                <CosmicFX />
+                {children}
+                <CallOverlay />
+              </CallProvider>
               <Toaster />
               <Sonner />
             </TooltipProvider>
