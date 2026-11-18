@@ -42,13 +42,13 @@ export const orNull = async <T>(request: Promise<T>) => {
 };
 
 /** Sends a recorded voice note to a member. Returns the new message (with its waveform and length). */
-export const uploadVoice = async <T>(memberId: string, blob: Blob, durationMs: number, peaks: number[]): Promise<T> => {
+export const uploadVoice = async <T>(memberId: string, blob: Blob, durationMs: number, peaks: number[], replyTo?: string | null): Promise<T> => {
   let res: Response;
   try {
     res = await fetch(`/api/messages/${memberId}/voice`, {
       method: 'POST',
       credentials: 'same-origin',
-      headers: { 'Content-Type': blob.type || 'audio/webm', 'X-Duration-Ms': String(Math.round(durationMs)), 'X-Peaks': peaks.join(',') },
+      headers: { 'Content-Type': blob.type || 'audio/webm', 'X-Duration-Ms': String(Math.round(durationMs)), 'X-Peaks': peaks.join(','), ...(replyTo ? { 'X-Reply-To': replyTo } : {}) },
       body: blob,
     });
   } catch {

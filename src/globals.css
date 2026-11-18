@@ -632,3 +632,7 @@ html[data-custom-bg] body { background: transparent; }
     .tg-pill { background: hsl(260 35% 14% / 0.96); }
   }
 }
+
+/* Replying: the message you jumped to flashes once, and a reply quote sits inside the bubble. */
+@keyframes tg-flash { 0%, 100% { filter: none; } 25%, 60% { filter: brightness(1.55) saturate(1.2); } }
+.tg-flash .tg-bubble { animation: tg-flash 1.4s ease-in-out 1; }
