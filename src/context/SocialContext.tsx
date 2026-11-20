@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { api, orNull, uploadImage } from '@/lib/api';
+import { MAX_PICTURES, prepareImage, uploadPictures } from '@/lib/images';
 import { useWallet } from '@/context/WalletContext';
 import { useAccountNotifications } from '@/hooks/useAccountNotifications';
 
@@ -42,6 +43,13 @@ export interface Post {
   user_id: string;
   content: string;
   image_url?: string;
+  /** Every picture on the post (up to 10), in order. Older posts list their single image here too. */
+  images?: string[];
+  /** How many follow-up posts the author added in a thread (on the first post). */
+  thread_count?: number;
+  thread_root_id?: string | null;
+  thread_position?: number;
+  community?: { id: string; slug: string; name: string } | null;
   created_at: string;
   post_type?: 'post' | 'repost';
   repost_content?: string;
@@ -71,6 +79,8 @@ export interface ReportTarget {
   label?: string;
 }
 
+export interface PostPart { content: string; images: File[] }
+
 interface SocialContextType {
   posts: Post[];
   notifications: Notification[];
@@ -91,6 +101,8 @@ interface SocialContextType {
   loadMoreNotifications: () => Promise<void>;
   refreshFeed: () => Promise<void>;
   addPost: (content: string, image?: File) => Promise<void>;
+  /** Publishes a post, or a thread when there is more than one part, with up to 10 pictures each. */
+  publish: (parts: PostPart[], options?: { community?: string; onProgress?: (done: number, total: number) => void }) => Promise<Post>;
   toggleLike: (postId: string) => Promise<boolean>;
   toggleRepost: (postId: string) => Promise<boolean>;
   addComment: (postId: string, content: string) => Promise<Reply>;
@@ -244,6 +256,38 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const publish: SocialContextType['publish'] = async (parts, options = {}) => {
+    const author = requireAccount();
+    if (!parts.length || parts.length > 10) throw new Error('A thread has 1 to 10 posts.');
+    parts.forEach((part, index) => {
+      const label = parts.length > 1 ? ` (post ${index + 1})` : '';
+      if (part.content.trim().length > 2000) throw new Error(`Posts must be 2,000 characters or fewer${label}.`);
+      if (part.images.length > MAX_PICTURES) throw new Error(`A post can have up to ${MAX_PICTURES} pictures${label}.`);
+      if (!part.content.trim() && !part.images.length) throw new Error(`Write something or attach a picture${label}.`);
+    });
+    if (postingUsers.current.has(author)) throw new Error('Your post is already being saved.');
+    postingUsers.current.add(author);
+    try {
+      const files = await Promise.all(parts.flatMap(part => part.images).map(prepareImage));
+      let done = 0;
+      options.onProgress?.(0, files.length);
+      const urls = await uploadPictures(files, count => { done = count; options.onProgress?.(done, files.length); });
+      let cursor = 0;
+      const body = { parts: parts.map(part => ({ content: part.content.trim(), images: urls.slice(cursor, cursor += part.images.length) })), community: options.community };
+      if (currentUserId.current !== author) throw new Error('Your account changed while posting. Log in and try again.');
+      const post = await api<Post>('/api/posts', { method: 'POST', body });
+      if (!options.community) {
+        requestNumber.current += 1;
+        setPosts(previous => [post, ...previous.filter(row => row.id !== post.id)].slice(0, visibleCount.current));
+        setLoading(false);
+        await fetchPosts();
+      }
+      return post;
+    } finally {
+      postingUsers.current.delete(author);
+    }
+  };
+
   const toggleRelation = async (table: 'likes' | 'reposts', postId: string): Promise<boolean> => {
     const author = requireAccount();
     const key = `${table}:${author}:${postId}`;
@@ -360,7 +404,7 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
       loading, feedError, liveStatus, hasMore, loadingMore, loadMore,
       notificationsLoading, notificationsError, notificationsReady,
       notificationsHasMore, notificationsLoadingMore, markingNotificationsRead,
-      refreshNotifications, loadMoreNotifications, refreshFeed: fetchPosts, addPost,
+      refreshNotifications, loadMoreNotifications, refreshFeed: fetchPosts, addPost, publish,
       toggleLike: postId => toggleRelation('likes', postId), toggleRepost: postId => toggleRelation('reposts', postId),
       addComment, followUser, unfollowUser, isFollowing: targetUserId => followingIds.includes(targetUserId),
       followingCount: followingIds.length, followingLoading, followingError, refreshFollowing: fetchFollowing,

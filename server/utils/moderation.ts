@@ -59,7 +59,7 @@ const STRIKE_LIMIT = 5;
  * Throws 422 when `text` is hateful, and records the attempt (not the text). After STRIKE_LIMIT
  * refusals in 24 hours the member is paused from posting until the oldest one ages out.
  */
-export const enforceCivility = async (profileId: string, surface: 'post' | 'reply' | 'bio' | 'username' | 'display_name' | 'message', text: string) => {
+export const enforceCivility = async (profileId: string, surface: 'post' | 'reply' | 'bio' | 'username' | 'display_name' | 'message' | 'community', text: string) => {
   const [{ strikes }] = (await sql`
     select count(*)::int as strikes from public.moderation_events
     where profile_id = ${profileId} and created_at > now() - interval '24 hours'`) as { strikes: number }[];

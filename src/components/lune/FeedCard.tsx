@@ -2,7 +2,8 @@
 import VerifiedBadge from '@/components/lune/VerifiedBadge';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { MessageCircle, Repeat2, Heart, Coins, SendHorizontal, MoreHorizontal, Trash2, Flag, Ban } from 'lucide-react';
+import { MessageCircle, Repeat2, Heart, Coins, SendHorizontal, MoreHorizontal, Trash2, Flag, Ban, Users, ListTree } from 'lucide-react';
+import ImageGrid from './ImageGrid';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import ConfirmDialog, { type Confirm } from './ConfirmDialog';
@@ -279,9 +280,12 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
             {renderContent(body, goToTicker)}
           </p>
 
-          {post.image_url && (
-            <div className="mt-3 rounded-2xl overflow-hidden border border-white/[0.08] max-w-xl">
-              <img src={post.image_url} alt="Post attachment" loading="lazy" className="w-full h-auto max-h-[520px] object-cover" />
+          <ImageGrid images={post.images?.length ? post.images : post.image_url ? [post.image_url] : []} />
+
+          {(post.community || (!!post.thread_count && !initialCommentsOpen)) && (
+            <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs">
+              {post.community && <Link to={`/communities/${post.community.slug}`} className="inline-flex items-center gap-1 rounded-full border border-lune-400/25 bg-lune-500/10 px-2.5 py-1 font-medium text-lune-200 hover:bg-lune-500/20"><Users size={12} />{post.community.name}</Link>}
+              {!!post.thread_count && !initialCommentsOpen && <Link to={`/post/${post.id}`} className="inline-flex items-center gap-1 rounded-full border border-white/10 px-2.5 py-1 font-medium text-white/60 hover:border-lune-400/40 hover:text-white"><ListTree size={12} />Show thread · {post.thread_count + 1} posts</Link>}
             </div>
           )}
 
