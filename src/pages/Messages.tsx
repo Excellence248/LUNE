@@ -274,7 +274,8 @@ const CircleButton = ({ label, onClick, disabled, children, className, type = 'b
   </button>
 );
 
-const REPLY_SWIPE = 64;
+const REPLY_SWIPE = 52;
+const HOLD_MS = 420;
 
 interface RowProps {
   message: ThreadMessage; mine: boolean; startsRun: boolean; endsRun: boolean;
@@ -290,7 +291,12 @@ const MessageRow = memo(({ message, mine, startsRun, endsRun, canReply, myId, pe
   const [offset, setOffset] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [copied, setCopied] = useState(false);
-  const drag = useRef({ id: -1, x: 0, y: 0, active: false, dx: 0 });
+  const [menu, setMenu] = useState(false);
+  const [armed, setArmed] = useState(false);
+  const hold = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const drag = useRef({ id: -1, x: 0, y: 0, active: false, dx: 0, armed: false });
+  const stopHold = () => { if (hold.current) { clearTimeout(hold.current); hold.current = null; } };
+  useEffect(() => stopHold, []);
 
   const voice = message.kind === 'voice' && !!message.voice_id;
   const bare = !voice && !message.reply_to_id && isEmojiOnly(message.content);
@@ -304,7 +310,10 @@ const MessageRow = memo(({ message, mine, startsRun, endsRun, canReply, myId, pe
 
   const down = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!canReply || event.pointerType === 'mouse') return;
-    drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, active: false, dx: 0 };
+    drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, active: false, dx: 0, armed: false };
+    // Holding a message opens its menu, like on WhatsApp.
+    stopHold();
+    hold.current = setTimeout(() => { hold.current = null; drag.current.id = -1; navigator.vibrate?.(15); setMenu(true); }, HOLD_MS);
   };
   const move = (event: ReactPointerEvent<HTMLDivElement>) => {
     const state = drag.current;
@@ -312,23 +321,29 @@ const MessageRow = memo(({ message, mine, startsRun, endsRun, canReply, myId, pe
     const dx = event.clientX - state.x;
     const dy = event.clientY - state.y;
     if (!state.active) {
-      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { state.id = -1; return; } // the member is scrolling
-      if (dx <= 10) return;
+      if (Math.abs(dx) > 8 || Math.abs(dy) > 8) stopHold();
+      // Clearly vertical: the member is scrolling, leave it to the browser.
+      if (Math.abs(dy) > 14 && Math.abs(dy) > Math.abs(dx) * 1.4) { state.id = -1; return; }
+      if (dx <= 8 || dx < Math.abs(dy) * 0.9) return;
       state.active = true;
       event.currentTarget.setPointerCapture(event.pointerId);
       setDragging(true);
     }
-    state.dx = Math.max(0, Math.min(dx, 96));
-    setOffset(state.dx * 0.8);
+    state.dx = Math.max(0, Math.min(dx, 110));
+    const nowArmed = state.dx >= REPLY_SWIPE;
+    if (nowArmed !== state.armed) { state.armed = nowArmed; setArmed(nowArmed); if (nowArmed) navigator.vibrate?.(10); }
+    setOffset(state.dx * 0.85);
   };
   const up = (event: ReactPointerEvent<HTMLDivElement>) => {
+    stopHold();
     const state = drag.current;
     if (state.id !== event.pointerId) return;
-    const triggered = state.active && state.dx >= REPLY_SWIPE;
+    const triggered = state.active && state.dx >= REPLY_SWIPE && event.type !== 'pointercancel';
     state.id = -1;
     setDragging(false);
+    setArmed(false);
     setOffset(0);
-    if (triggered) { navigator.vibrate?.(12); onReply(message); }
+    if (triggered) onReply(message);
   };
 
   const copy = async () => {
@@ -336,7 +351,7 @@ const MessageRow = memo(({ message, mine, startsRun, endsRun, canReply, myId, pe
   };
 
   const actions = (canReply || !voice) && (
-    <div className={cn('flex shrink-0 items-center gap-0.5 self-center opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100', mine ? 'order-first' : 'order-last')}>
+    <div className={cn('flex shrink-0 items-center gap-0.5 self-center [@media(pointer:coarse)]:hidden opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100', mine ? 'order-first' : 'order-last')}>
       {canReply && <button type="button" onClick={() => onReply(message)} aria-label="Reply" title="Reply" className="tg-pill flex h-8 w-8 items-center justify-center rounded-full text-white/80 hover:text-white"><CornerUpLeft size={15} /></button>}
       {!voice && <button type="button" onClick={() => void copy()} aria-label={copied ? 'Copied' : 'Copy text'} title={copied ? 'Copied' : 'Copy'} className="tg-pill flex h-8 w-8 items-center justify-center rounded-full text-white/80 hover:text-white">{copied ? <Check size={15} /> : <Copy size={14} />}</button>}
     </div>
@@ -351,11 +366,11 @@ const MessageRow = memo(({ message, mine, startsRun, endsRun, canReply, myId, pe
   );
 
   return (
-    <div id={`msg-${message.id}`} className={cn('group/row relative flex px-2.5', mine ? 'justify-end' : 'justify-start', startsRun ? 'mt-2.5' : 'mt-[3px]', flash && 'tg-flash')}
+    <div id={`msg-${message.id}`} className={cn('tg-row group/row relative flex px-2.5', mine ? 'justify-end' : 'justify-start', startsRun ? 'mt-2.5' : 'mt-[3px]', flash && 'tg-flash')}
       style={{ touchAction: 'pan-y' }} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
       {canReply && (
-        <span aria-hidden className="pointer-events-none absolute left-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-white/15 text-white"
-          style={{ opacity: Math.min(1, offset / 50), transform: `translateY(-50%) scale(${0.6 + 0.4 * Math.min(1, offset / 50)})` }}>
+        <span aria-hidden className={cn('pointer-events-none absolute left-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-white transition-colors', armed ? 'bg-lune-500' : 'bg-white/15')}
+          style={{ opacity: Math.min(1, offset / 36), transform: `translateY(-50%) scale(${0.6 + 0.4 * Math.min(1, offset / 44) + (armed ? 0.15 : 0)})` }}>
           <CornerUpLeft size={16} />
         </span>
       )}
@@ -389,6 +404,15 @@ const MessageRow = memo(({ message, mine, startsRun, endsRun, canReply, myId, pe
         )}
         {!mine && actions}
       </div>
+      {menu && (
+        <>
+          <div className="fixed inset-0 z-40" onPointerDown={() => setMenu(false)} />
+          <div role="menu" className={cn('absolute z-50 flex overflow-hidden rounded-2xl border border-white/10 bg-[#1b1530]/95 text-sm text-white shadow-xl backdrop-blur-xl', mine ? 'right-3' : 'left-3', startsRun ? '-top-11' : '-top-10')}>
+            {canReply && <button role="menuitem" type="button" onClick={() => { setMenu(false); onReply(message); }} className="flex items-center gap-2 px-4 py-2.5 active:bg-white/10"><CornerUpLeft size={15} />Reply</button>}
+            {!voice && <button role="menuitem" type="button" onClick={() => { setMenu(false); void copy(); }} className="flex items-center gap-2 px-4 py-2.5 active:bg-white/10"><Copy size={14} />Copy</button>}
+          </div>
+        </>
+      )}
     </div>
   );
 });
