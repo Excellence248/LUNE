@@ -5,7 +5,7 @@ import { requirePermission } from '../../../../utils/auth';
 import { rateLimit } from '../../../../utils/limits';
 import { enforceCivility } from '../../../../utils/moderation';
 import { sql } from '../../../../utils/db';
-import { notifyPostOwner } from '../../../../utils/push';
+import { notifyMentions, notifyPostOwner } from '../../../../utils/push';
 
 // Body: { content }. Returns the new reply with its author.
 export default defineHandler(async (event) => {
@@ -21,6 +21,7 @@ export default defineHandler(async (event) => {
       insert into public.replies (post_id, user_id, content) values (${post}, ${me.id}, ${text})
       returning public.reply_json(replies.*) as reply`;
     await notifyPostOwner(me.id, post, 'reply', text);
+    await notifyMentions(me.id, text, `/post/${post}`);
     return row.reply;
   } catch (error) {
     // Raised by the database when either member has blocked the other.

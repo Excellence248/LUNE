@@ -4,6 +4,7 @@ import { requirePermission } from '../../../utils/auth';
 import { feedFeatures } from '../../../utils/feed';
 import { rateLimit } from '../../../utils/limits';
 import { enforceCivility } from '../../../utils/moderation';
+import { notifyMentions } from '../../../utils/push';
 import { sql } from '../../../utils/db';
 
 const MEDIA_PATH = /^\/api\/media\/([0-9a-f-]{36})$/;
@@ -75,6 +76,7 @@ export default defineHandler(async (event) => {
       rootId = created.id as string;
     }
     const [row] = await sql`select public.post_json(po) as post from public.posts po where po.id = ${rootId}`;
+    for (const part of parts) if (part.content) await notifyMentions(me.id, part.content, `/post/${rootId}`);
     return row.post;
   } catch (error) {
     const code = (error as { code?: string }).code;

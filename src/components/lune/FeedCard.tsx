@@ -24,14 +24,16 @@ interface FeedCardProps {
 }
 
 /** Highlight $TICKER cashtags and link them to the token page. */
-const renderContent = (text: string, onTicker: (t: string) => void) =>
-  text.split(/(\$[A-Za-z][A-Za-z0-9]{1,9}\b)/g).map((part, i) =>
-    /^\$[A-Za-z][A-Za-z0-9]{1,9}$/.test(part) ? (
+const renderContent = (text: string, go: (path: string) => void) =>
+  text.split(/(\$[A-Za-z][A-Za-z0-9]{1,9}\b|(?<![A-Za-z0-9_])@[A-Za-z0-9_]{3,64}|(?<![A-Za-z0-9_&])#[A-Za-z][A-Za-z0-9_]{1,49})/g).map((part, i) =>
+    /^(\$[A-Za-z][A-Za-z0-9]{1,9}|@[A-Za-z0-9_]{3,64}|#[A-Za-z][A-Za-z0-9_]{1,49})$/.test(part) ? (
       <button
         key={i}
         onClick={e => {
           e.stopPropagation();
-          onTicker(part.slice(1).toUpperCase());
+          if (part[0] === '$') go(`/token/${encodeURIComponent(part.slice(1).toUpperCase())}`);
+          else if (part[0] === '@') go(`/profile/${encodeURIComponent(part.slice(1))}`);
+          else go(`/search?q=${encodeURIComponent(part)}`);
         }}
         className="font-semibold text-lune-300 hover:text-lune-200 hover:underline underline-offset-2"
       >
@@ -167,7 +169,7 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
     if (username) navigate(`/profile/${encodeURIComponent(username)}`);
   };
 
-  const goToTicker = (sym: string) => navigate(`/token/${encodeURIComponent(sym)}`);
+  const goTo = (path: string) => navigate(path);
 
   const isRepost = post.post_type === 'repost';
   const displayUsername = isRepost ? post.repost_username : post.profiles?.username;
@@ -277,7 +279,7 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
           </div>
 
           <p className="selectable mt-1 text-[15px] text-white/85 leading-relaxed whitespace-pre-wrap break-words">
-            {renderContent(body, goToTicker)}
+            {renderContent(body, goTo)}
           </p>
 
           <ImageGrid images={post.images?.length ? post.images : post.image_url ? [post.image_url] : []} />

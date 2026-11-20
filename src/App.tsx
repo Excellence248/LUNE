@@ -18,6 +18,7 @@ import Premium from "./pages/Premium";
 import Wallet from "./pages/Wallet";
 import Jobs from "./pages/Jobs";
 import Communities from "./pages/Communities";
+import Search from "./pages/Search";
 import CommunityDetail from "./pages/CommunityDetail";
 import Profile from "./pages/Profile";
 import UserProfile from "./pages/UserProfile";
@@ -66,6 +67,7 @@ const App = () => (
         <Route path="/wallet" element={<Wallet />} />
         <Route path="/jobs" element={<Jobs />} />
         <Route path="/communities" element={<Communities />} />
+        <Route path="/search" element={<Search />} />
         <Route path="/communities/:slug" element={<CommunityDetail />} />
         <Route path="/profile" element={<RequireAccount><Profile /></RequireAccount>} />
         <Route path="/profile/:username" element={<UserProfile />} />

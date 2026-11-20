@@ -101,3 +101,21 @@ export const notifyPostOwner = async (actorId: string, postId: string, kind: 'li
     // never fails the action
   }
 };
+
+/** Tells members named with @username in a post or reply, unless they have blocked or been blocked by the author. */
+export const notifyMentions = async (actorId: string, text: string, url: string) => {
+  if (!pushConfigured()) return;
+  try {
+    const names = [...new Set([...text.matchAll(/(?:^|[^A-Za-z0-9_])@([A-Za-z0-9_]{3,64})/g)].map(match => match[1].toLowerCase()))].slice(0, 5);
+    if (!names.length) return;
+    const people = await sql`
+      select p.id from public.profiles p
+      where lower(p.username) = any(${names}::text[]) and p.id <> ${actorId}
+        and not exists (select 1 from public.blocks b where (b.blocker_id = ${actorId} and b.blocked_id = p.id) or (b.blocker_id = p.id and b.blocked_id = ${actorId}))`;
+    if (!people.length) return;
+    const { name } = await nameOf(actorId);
+    await Promise.all(people.map(person => pushTo(person.id as string, { title: `${name} mentioned you`, body: text, url, tag: `mention:${url}` })));
+  } catch {
+    // never fails the action
+  }
+};
