@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Loader2, Trash2, Users, X } from 'lucide-react';
+import { ArrowLeft, Loader2, Pencil, Trash2, Users, X } from 'lucide-react';
+import EditCommunity from '@/components/lune/EditCommunity';
 import Layout from '@/components/lune/Layout';
 import CreatePost from '@/components/lune/CreatePost';
 import FeedCard from '@/components/lune/FeedCard';
@@ -27,6 +28,7 @@ const CommunityView = ({ slug }: { slug: string }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [working, setWorking] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
 
   const loadPosts = useCallback(async () => {
@@ -115,6 +117,7 @@ const CommunityView = ({ slug }: { slug: string }) => {
             <div className="-mt-9 flex items-end justify-between gap-3">
               <CommunityAvatar community={community} className="h-[72px] w-[72px] text-2xl ring-4 ring-[#0a0618]" />
               <div className="flex items-center gap-2 pb-1">
+                {isOwner && <Button variant="outline" size="sm" onClick={() => setEditing(true)} className="rounded-full border-white/15 bg-transparent"><Pencil size={14} className="mr-1.5" />Edit</Button>}
                 {isOwner && <Button variant="outline" size="sm" disabled={working} onClick={askDelete} className="rounded-full border-red-400/30 bg-transparent text-red-300 hover:bg-red-400/10"><Trash2 size={14} className="mr-1.5" />Delete</Button>}
                 {!isOwner && (isMember
                   ? <Button variant="outline" size="sm" disabled={working} onClick={() => void leave()} className="rounded-full border-white/15 bg-transparent">Joined · Leave</Button>
@@ -164,6 +167,7 @@ const CommunityView = ({ slug }: { slug: string }) => {
         )}
       </div>
       {confirm && <ConfirmDialog confirm={confirm} onClose={() => setConfirm(null)} />}
+      {isOwner && <EditCommunity key={`${community.name}${community.avatar_url}${community.cover_url}`} community={community} open={editing} onClose={() => setEditing(false)} onSaved={next => setCommunity(previous => previous ? { ...previous, ...next } : next)} />}
     </Layout>
   );
 };

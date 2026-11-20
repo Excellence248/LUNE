@@ -175,7 +175,7 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     fetchPosts();
-    const interval = setInterval(fetchPosts, 15000);
+    const interval = setInterval(() => { if (document.visibilityState === 'visible') void fetchPosts(); }, 15000);
     const onVisible = () => { if (document.visibilityState === 'visible') fetchPosts(); };
     document.addEventListener('visibilitychange', onVisible);
     return () => {

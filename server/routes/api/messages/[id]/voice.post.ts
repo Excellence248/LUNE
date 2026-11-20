@@ -7,6 +7,7 @@ import { isMissingSchema, isUuid } from '../../../../utils/calls';
 import { loadMessage, messageFeatures } from '../../../../utils/messages';
 import { sql } from '../../../../utils/db';
 import { rateLimit } from '../../../../utils/limits';
+import { nameOf, pushTo } from '../../../../utils/push';
 
 // Body: the raw recording (WebM, Ogg or MP4 audio, up to 3 MB). Headers: X-Duration-Ms (500 to 120000)
 // and X-Peaks (optional, up to 64 comma-separated loudness values from 0 to 100, for the waveform).
@@ -43,6 +44,8 @@ export default defineHandler(async (event) => {
       select m.id from public.send_voice_message(${me.id}, ${to}, ${type}, ${'\\x' + Buffer.from(bytes).toString('hex')}::bytea, ${duration}, ${JSON.stringify(peaks)}::jsonb) m`;
     const id = sent.id as string;
     if (replying) await sql`update public.direct_messages set reply_to_id = ${replyHeader} where id = ${id}`.catch(() => undefined);
+    const sender = await nameOf(me.id);
+    await pushTo(to, { title: sender.name, body: '🎤 Voice message', url: `/messages/${encodeURIComponent(sender.username)}`, tag: `msg:${me.id}` });
     return await loadMessage(id, features);
   } catch (error) {
     if (error instanceof HTTPError) throw error;

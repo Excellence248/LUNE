@@ -1,4 +1,5 @@
 import React from 'react';
+import { PushBanner } from './PushControl';
 import { useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
@@ -24,6 +25,7 @@ const Layout = ({ children, className, noPadding = false }: LayoutProps) => {
         <TopBar />
         <div key={pageKey} className={cn('lune-page-enter flex-1 w-full max-w-[1680px] mx-auto', !noPadding && 'px-4 py-6 md:px-10 md:py-10', className)}>
           <Repost />
+          <PushBanner />
           {children}
         </div>
       </main>

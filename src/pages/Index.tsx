@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Layout from '@/components/lune/Layout';
 import FeedCard from '@/components/lune/FeedCard';
@@ -23,8 +23,11 @@ const PostSkeleton = () => (
 );
 
 const Index = () => {
-  const { posts, refreshFeed, loading, feedError, liveStatus, hasMore, loadMore, loadingMore } = useSocial();
+  const { posts: allPosts, refreshFeed, loading, feedError, liveStatus, hasMore, loadMore, loadingMore, isFollowing } = useSocial();
+  const [tab, setTab] = useState<'all' | 'following'>('all');
+  const sentinel = useRef<HTMLDivElement>(null);
   const { user } = useWallet();
+  const posts = tab === 'following' ? allPosts.filter(post => post.user_id === user?.id || isFollowing(post.user_id)) : allPosts;
   const [refreshing, setRefreshing] = useState(false);
   const refreshBusy = useRef(false);
   const handleRefresh = async () => {
@@ -38,6 +41,15 @@ const Index = () => {
       setRefreshing(false);
     }
   };
+
+  // Older posts load by themselves as the end of the list comes into view.
+  useEffect(() => {
+    const node = sentinel.current;
+    if (!node || !hasMore) return;
+    const observer = new IntersectionObserver(entries => { if (entries[0].isIntersecting) void loadMore(); }, { rootMargin: '600px' });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMore, loadMore, allPosts.length]);
 
   return (
     <Layout noPadding className="flex justify-center gap-8 xl:px-8">
@@ -60,6 +72,14 @@ const Index = () => {
             <RefreshCw size={17} className={refreshing ? 'animate-spin' : ''} />
           </button>
         </div>
+
+        {user && (
+          <div className="flex border-b border-white/[0.06] text-sm" role="tablist">
+            {([['all', 'For you'], ['following', 'Following']] as const).map(([value, label]) => (
+              <button key={value} role="tab" aria-selected={tab === value} onClick={() => setTab(value)} className={`flex-1 py-3 font-medium transition-colors ${tab === value ? 'border-b-2 border-lune-400 text-white' : 'text-white/45 hover:text-white'}`}>{label}</button>
+            ))}
+          </div>
+        )}
 
         <CreatePost key={user?.id || 'guest'} />
 
@@ -85,6 +105,7 @@ const Index = () => {
               <button onClick={handleRefresh} disabled={refreshing} className="lune-btn h-9 mt-4 block mx-auto">{refreshing ? 'Retrying…' : 'Retry'}</button>
             </EmptyState>
           ) : (
+            tab === 'following' ? <EmptyState moon title="Nothing from people you follow yet">Follow a few members and their posts will show up here.</EmptyState> :
             <EmptyState moon title="It’s quiet up here">
               No posts yet. Be the first to share something with the community.
               <span className="mt-4 flex justify-center gap-2">
@@ -93,7 +114,7 @@ const Index = () => {
             </EmptyState>
           )}
         </div>
-        {hasMore && <div className="p-5 flex justify-center"><button onClick={loadMore} disabled={loadingMore || refreshing} className="lune-btn h-9">{loadingMore ? 'Loading…' : 'Load older posts'}</button></div>}
+        {hasMore && <div ref={sentinel} className="p-5 flex justify-center"><button onClick={loadMore} disabled={loadingMore || refreshing} className="lune-btn h-9">{loadingMore ? 'Loading…' : 'Load older posts'}</button></div>}
       </div>
       <TrendingSidebar />
     </Layout>

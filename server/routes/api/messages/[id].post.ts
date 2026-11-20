@@ -7,6 +7,7 @@ import { rateLimit } from '../../../utils/limits';
 import { loadMessage, messageFeatures } from '../../../utils/messages';
 import { enforceCivility } from '../../../utils/moderation';
 import { sql } from '../../../utils/db';
+import { nameOf, pushTo } from '../../../utils/push';
 
 // Body: { content, reply_to? }. Sends a private message from the caller to member :id and returns it.
 // reply_to is the ID of a message in this same conversation that this one answers (when the database
@@ -39,6 +40,8 @@ export default defineHandler(async (event) => {
       // still delivered, just without the quote.
       await sql`update public.direct_messages set reply_to_id = ${replyTo} where id = ${id}`.catch(() => undefined);
     }
+    const sender = await nameOf(me.id);
+    await pushTo(to, { title: sender.name, body: text, url: `/messages/${encodeURIComponent(sender.username)}`, tag: `msg:${me.id}` });
     return await loadMessage(id, features);
   } catch (error) {
     const code = (error as { code?: string }).code;
