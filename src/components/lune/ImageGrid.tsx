@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /** Full-screen viewer for a post's pictures: arrows, swipe-free keyboard support, Esc to close. */
-const Lightbox = ({ images, start, onClose }: { images: string[]; start: number; onClose: () => void }) => {
+export const Lightbox = ({ images, start, onClose }: { images: string[]; start: number; onClose: () => void }) => {
   const [index, setIndex] = useState(start);
   const step = useCallback((by: number) => setIndex(current => (current + by + images.length) % images.length), [images.length]);
 

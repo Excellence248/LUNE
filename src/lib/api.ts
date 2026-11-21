@@ -41,6 +41,24 @@ export const orNull = async <T>(request: Promise<T>) => {
   }
 };
 
+/** Sends a picture to a member, with an optional caption. Returns the new message. */
+export const uploadChatImage = async <T>(memberId: string, file: File, caption: string, replyTo?: string | null): Promise<T> => {
+  let res: Response;
+  try {
+    res = await fetch(`/api/messages/${memberId}/image`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': file.type, ...(caption ? { 'X-Caption': encodeURIComponent(caption) } : {}), ...(replyTo ? { 'X-Reply-To': replyTo } : {}) },
+      body: file,
+    });
+  } catch {
+    throw new ApiError('The server could not be reached. Check your connection and try again.', 0);
+  }
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new ApiError(data?.message || 'Your picture could not be sent. Please try again.', res.status, data?.code);
+  return data as T;
+};
+
 /** Sends a recorded voice note to a member. Returns the new message (with its waveform and length). */
 export const uploadVoice = async <T>(memberId: string, blob: Blob, durationMs: number, peaks: number[], replyTo?: string | null): Promise<T> => {
   let res: Response;

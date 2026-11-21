@@ -41,7 +41,7 @@ export default defineHandler(async (event) => {
       await sql`update public.direct_messages set reply_to_id = ${replyTo} where id = ${id}`.catch(() => undefined);
     }
     const sender = await nameOf(me.id);
-    await pushTo(to, { title: sender.name, body: text, url: `/messages/${encodeURIComponent(sender.username)}`, tag: `msg:${me.id}` });
+    await pushTo(to, { title: sender.name, body: text, url: `/messages/${encodeURIComponent(sender.username)}`, tag: `msg:${me.id}`, category: 'messages' });
     return await loadMessage(id, features);
   } catch (error) {
     const code = (error as { code?: string }).code;

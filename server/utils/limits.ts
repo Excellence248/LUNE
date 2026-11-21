@@ -23,6 +23,7 @@ export const LIMITS = {
   age: [10, 3600],
   message: [60, 600],
   voice: [30, 600],
+  chatImage: [30, 600],
   thread: [6, 3600],
   communityCreate: [5, 86400],
   communityAction: [120, 3600],

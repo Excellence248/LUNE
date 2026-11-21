@@ -45,7 +45,7 @@ export default defineHandler(async (event) => {
     const id = sent.id as string;
     if (replying) await sql`update public.direct_messages set reply_to_id = ${replyHeader} where id = ${id}`.catch(() => undefined);
     const sender = await nameOf(me.id);
-    await pushTo(to, { title: sender.name, body: '🎤 Voice message', url: `/messages/${encodeURIComponent(sender.username)}`, tag: `msg:${me.id}` });
+    await pushTo(to, { title: sender.name, body: '🎤 Voice message', url: `/messages/${encodeURIComponent(sender.username)}`, tag: `msg:${me.id}`, category: 'messages' });
     return await loadMessage(id, features);
   } catch (error) {
     if (error instanceof HTTPError) throw error;

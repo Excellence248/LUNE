@@ -57,13 +57,30 @@ export interface PushMessage {
   tag?: string;
   /** Keep it on screen until acted on (incoming calls). */
   urgent?: boolean;
+  /** Which of the member's notification switches covers this one. */
+  category?: PushCategory;
 }
+
+export const PUSH_CATEGORIES = ['messages', 'calls', 'replies', 'likes', 'follows', 'mentions'] as const;
+export type PushCategory = (typeof PUSH_CATEGORIES)[number];
 
 /** Sends a notification to every device a member has enabled. Never throws; dead devices are forgotten. */
 export const pushTo = async (userId: string, message: PushMessage) => {
   if (!pushConfigured()) return;
   try {
-    const subs = await sql`select id, endpoint, p256dh, auth from public.push_subscriptions where user_id = ${userId}`;
+    const everyDevice = () => sql`select id, endpoint, p256dh, auth from public.push_subscriptions where user_id = ${userId}`;
+    let subs;
+    if (message.category && (PUSH_CATEGORIES as readonly string[]).includes(message.category)) {
+      // The column name comes from the fixed list above, never from a request. A member who never opened the
+      // switches has no row, which means everything is on. Before the preferences migration, send as before.
+      try {
+        const [prefs] = await sql.query(`select ${message.category} as on from public.notification_prefs where user_id = $1`, [userId]);
+        if (prefs && prefs.on === false) return;
+        subs = await everyDevice();
+      } catch {
+        subs = await everyDevice();
+      }
+    } else subs = await everyDevice();
     if (!subs.length) return;
     const payload = Buffer.from(JSON.stringify({ ...message, body: message.body.slice(0, 140) }));
     const gone: string[] = [];
@@ -96,7 +113,7 @@ export const notifyPostOwner = async (actorId: string, postId: string, kind: 'li
     if (!post || post.user_id === actorId) return;
     const { name } = await nameOf(actorId);
     const verb = { like: 'liked your post', repost: 'reposted your post', reply: 'replied to your post' }[kind];
-    await pushTo(post.user_id as string, { title: `${name} ${verb}`, body: kind === 'reply' ? text : (post.snippet as string) || 'Open Lune to see it', url: `/post/${postId}`, tag: `${kind}:${postId}` });
+    await pushTo(post.user_id as string, { title: `${name} ${verb}`, body: kind === 'reply' ? text : (post.snippet as string) || 'Open Lune to see it', url: `/post/${postId}`, tag: `${kind}:${postId}`, category: kind === 'like' || kind === 'repost' ? 'likes' : 'replies' });
   } catch {
     // never fails the action
   }
@@ -114,7 +131,7 @@ export const notifyMentions = async (actorId: string, text: string, url: string)
         and not exists (select 1 from public.blocks b where (b.blocker_id = ${actorId} and b.blocked_id = p.id) or (b.blocker_id = p.id and b.blocked_id = ${actorId}))`;
     if (!people.length) return;
     const { name } = await nameOf(actorId);
-    await Promise.all(people.map(person => pushTo(person.id as string, { title: `${name} mentioned you`, body: text, url, tag: `mention:${url}` })));
+    await Promise.all(people.map(person => pushTo(person.id as string, { title: `${name} mentioned you`, body: text, url, tag: `mention:${url}`, category: 'mentions' })));
   } catch {
     // never fails the action
   }

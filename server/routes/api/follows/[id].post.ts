@@ -19,7 +19,7 @@ export default defineHandler(async (event) => {
       const added = await sql`insert into public.follows (follower_id, following_id) values (${me.id}, ${target}) on conflict do nothing returning follower_id`;
       if (added.length) {
         const { name, username } = await nameOf(me.id);
-        await pushTo(target, { title: `${name} followed you`, body: 'Tap to see their profile', url: `/profile/${encodeURIComponent(username)}`, tag: `follow:${me.id}` });
+        await pushTo(target, { title: `${name} followed you`, body: 'Tap to see their profile', url: `/profile/${encodeURIComponent(username)}`, tag: `follow:${me.id}`, category: 'follows' });
       }
     }
     else await sql`delete from public.follows where follower_id = ${me.id} and following_id = ${target}`;

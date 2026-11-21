@@ -17,7 +17,7 @@ export default defineHandler(async (event) => {
   try {
     const [started] = await sql`select id from public.start_call(${me.id}, ${to}, ${kind})`;
     const caller = await nameOf(me.id);
-    await pushTo(to as string, { title: `${caller.name} is calling`, body: kind === 'video' ? 'Incoming video call' : 'Incoming voice call', url: `/messages/${encodeURIComponent(caller.username)}`, tag: `call:${started.id}`, urgent: true });
+    await pushTo(to as string, { title: `${caller.name} is calling`, body: kind === 'video' ? 'Incoming video call' : 'Incoming voice call', url: `/messages/${encodeURIComponent(caller.username)}`, tag: `call:${started.id}`, urgent: true, category: 'calls' });
     return await getCall(started.id as string, me.id);
   } catch (error) {
     return callError(error);

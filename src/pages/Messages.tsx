@@ -1,7 +1,11 @@
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Check, CheckCheck, ChevronDown, Copy, CornerUpLeft, Loader2, MessageCircle, Mic, Palette, Phone, Search, SendHorizontal, Smile, Trash2, Video, X } from 'lucide-react';
+import { ArrowLeft, Check, CheckCheck, ChevronDown, Copy, CornerUpLeft, ImagePlus, Loader2, MessageCircle, Mic, MoreHorizontal, Palette, Phone, Search, SendHorizontal, Smile, Trash2, Video, X } from 'lucide-react';
+import ConfirmDialog, { type Confirm } from '@/components/lune/ConfirmDialog';
+import { Lightbox } from '@/components/lune/ImageGrid';
+import { prepareImage, PICTURE_TYPES } from '@/lib/images';
+import { showError } from '@/utils/toast';
 import { differenceInDays, format, isSameDay, isToday, isYesterday } from 'date-fns';
 import Layout from '@/components/lune/Layout';
 import VerifiedBadge from '@/components/lune/VerifiedBadge';
@@ -19,7 +23,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { announceMessagesChanged } from '@/hooks/useUnreadMessages';
 import { useVisualViewport } from '@/hooks/useVisualViewport';
 import { useVoiceRecorder, type Recording } from '@/hooks/useVoiceRecorder';
-import { ApiError, api, uploadVoice } from '@/lib/api';
+import { ApiError, api, uploadChatImage, uploadVoice } from '@/lib/api';
 import { DEFAULT_CHAT_PRESET, DOODLES_URL, backgroundCss, useAppearance, useIsPortrait } from '@/lib/appearance';
 import { displayNameOf } from '@/lib/names';
 import { cn } from '@/lib/utils';
@@ -38,13 +42,19 @@ interface Conversation {
 
 interface ThreadMember { id: string; username: string; display_name: string; avatar_url: string; blocked: boolean }
 interface ThreadMessage {
-  id: string; sender_id: string; kind: 'text' | 'voice'; content: string; created_at: string; read_at: string | null;
+  id: string; sender_id: string; kind: 'text' | 'voice' | 'image'; content: string; created_at: string; read_at: string | null;
+  /** Picture messages: the picture (the text is its caption). Deleted messages come back blank with deleted = true. */
+  image_id?: string | null; deleted?: boolean;
+  /** Emoji reactions, one per member. */
+  reactions?: { emoji: string; user_id: string }[];
+  reply_image?: boolean; reply_deleted?: boolean;
   /** Voice messages only: the recording, its length and the waveform to draw. */
   voice_id?: string | null; duration_ms?: number | null; peaks?: number[] | null;
   /** Replies only: the message this one answers, with its text and author (empty text + reply_voice = a voice message). */
   reply_to_id?: string | null; reply_sender_id?: string | null; reply_content?: string | null; reply_voice?: boolean;
 }
-interface Features { voice: boolean; replies: boolean }
+interface Features { voice: boolean; replies: boolean; images?: boolean; deletes?: boolean; reactions?: boolean }
+const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥'];
 interface ThreadData { member: ThreadMember; messages: ThreadMessage[]; features: Features; unreadIds: string[] }
 
 const MAX_LENGTH = 2000;
@@ -247,7 +257,7 @@ const dayLabel = (iso: string) => {
 };
 
 const clock = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`;
-const signatureOf = (list: ThreadMessage[]) => list.map(message => `${message.id}:${message.read_at ? 1 : 0}`).join(',');
+const signatureOf = (list: ThreadMessage[]) => list.map(message => `${message.id}:${message.read_at ? 1 : 0}:${message.deleted ? 1 : 0}:${(message.reactions ?? []).map(reaction => reaction.user_id.slice(0, 4) + reaction.emoji).join('')}`).join(',');
 
 // Web addresses in a message become links (http and https only).
 const URL_PATTERN = /(https?:\/\/[^\s<>"']+)/g;
@@ -279,15 +289,17 @@ const HOLD_MS = 420;
 
 interface RowProps {
   message: ThreadMessage; mine: boolean; startsRun: boolean; endsRun: boolean;
-  canReply: boolean; myId: string; peerName: string; flash: boolean;
+  canReply: boolean; canReact: boolean; canDelete: boolean; myId: string; peerName: string; flash: boolean;
   onReply: (message: ThreadMessage) => void; onJump: (id: string) => void;
+  onReact: (message: ThreadMessage, emoji: string) => void; onDelete: (message: ThreadMessage) => void; onOpenImage: (message: ThreadMessage) => void;
 }
 
 /**
- * One message. On a touch screen, swipe it to the right to reply; with a mouse, use the buttons that
- * appear beside it. Tapping a quote jumps to the message it answers.
+ * One message. On a touch screen, swipe it to the right to reply and hold it for its menu (reactions,
+ * reply, copy, delete); with a mouse, use the buttons that appear beside it. Tapping a quote jumps to
+ * the message it answers.
  */
-const MessageRow = memo(({ message, mine, startsRun, endsRun, canReply, myId, peerName, flash, onReply, onJump }: RowProps) => {
+const MessageRow = memo(({ message, mine, startsRun, endsRun, canReply: replyAllowed, canReact: reactAllowed, canDelete, myId, peerName, flash, onReply, onJump, onReact, onDelete, onOpenImage }: RowProps) => {
   const [offset, setOffset] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -298,18 +310,48 @@ const MessageRow = memo(({ message, mine, startsRun, endsRun, canReply, myId, pe
   const stopHold = () => { if (hold.current) { clearTimeout(hold.current); hold.current = null; } };
   useEffect(() => stopHold, []);
 
-  const voice = message.kind === 'voice' && !!message.voice_id;
-  const bare = !voice && !message.reply_to_id && isEmojiOnly(message.content);
-  const hasQuote = !!message.reply_to_id && (message.reply_voice || message.reply_content != null);
+  // A deleted message is just a note that it was there: no reply, reactions or menu.
+  const deleted = !!message.deleted;
+  const canReply = replyAllowed && !deleted;
+  const canReact = reactAllowed && !deleted;
+  const mayDelete = canDelete && mine && !deleted;
+  const voice = !deleted && message.kind === 'voice' && !!message.voice_id;
+  const picture = !deleted && message.kind === 'image' && !!message.image_id;
+  const copyable = !deleted && !voice && !!message.content;
+  const hasMenu = canReply || canReact || mayDelete || copyable;
+  const bare = !deleted && !voice && !picture && !message.reply_to_id && isEmojiOnly(message.content);
+  const hasQuote = !deleted && !!message.reply_to_id && (message.reply_voice || message.reply_image || message.reply_deleted || message.reply_content != null);
   const time = format(new Date(message.created_at), 'p');
   const meta = (
     <span className={cn('flex items-center gap-1 text-[11px] leading-none', bare ? 'text-white/60' : mine ? 'text-white/75' : 'text-white/45')} title={new Date(message.created_at).toLocaleString()}>
-      {time}{mine && <Ticks read={!!message.read_at} />}
+      {time}{mine && !deleted && <Ticks read={!!message.read_at} />}
     </span>
   );
 
+  // Reactions, grouped by emoji, shown as small chips on the bottom edge of the bubble.
+  const grouped = useMemo(() => {
+    const map = new Map<string, { count: number; mine: boolean }>();
+    for (const reaction of message.reactions ?? []) {
+      const entry = map.get(reaction.emoji) ?? { count: 0, mine: false };
+      entry.count += 1;
+      if (reaction.user_id === myId) entry.mine = true;
+      map.set(reaction.emoji, entry);
+    }
+    return [...map.entries()];
+  }, [message.reactions, myId]);
+  const chips = !deleted && grouped.length > 0 && (
+    <div className={cn('absolute -bottom-4 z-10 flex gap-1', mine ? 'right-2' : 'left-2')}>
+      {grouped.map(([emoji, info]) => (
+        <button key={emoji} type="button" disabled={!canReact} onClick={() => onReact(message, emoji)} aria-label={`${emoji} ${info.count}${info.mine ? ', yours. Tap to remove' : ''}`}
+          className={cn('flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[13px] leading-none shadow-md backdrop-blur', info.mine ? 'border-lune-300/70 bg-lune-700/90' : 'border-white/15 bg-[#241c3b]/95')}>
+          <span>{emoji}</span>{info.count > 1 && <span className="text-[11px] font-medium text-white/80">{info.count}</span>}
+        </button>
+      ))}
+    </div>
+  );
+
   const down = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!canReply || event.pointerType === 'mouse') return;
+    if (!hasMenu || event.pointerType === 'mouse') return;
     drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, active: false, dx: 0, armed: false };
     // Holding a message opens its menu, like on WhatsApp.
     stopHold();
@@ -325,6 +367,7 @@ const MessageRow = memo(({ message, mine, startsRun, endsRun, canReply, myId, pe
       // Clearly vertical: the member is scrolling, leave it to the browser.
       if (Math.abs(dy) > 14 && Math.abs(dy) > Math.abs(dx) * 1.4) { state.id = -1; return; }
       if (dx <= 8 || dx < Math.abs(dy) * 0.9) return;
+      if (!canReply) { state.id = -1; return; }
       state.active = true;
       event.currentTarget.setPointerCapture(event.pointerId);
       setDragging(true);
@@ -350,10 +393,10 @@ const MessageRow = memo(({ message, mine, startsRun, endsRun, canReply, myId, pe
     try { await navigator.clipboard.writeText(message.content); setCopied(true); setTimeout(() => setCopied(false), 1400); } catch { /* clipboard unavailable */ }
   };
 
-  const actions = (canReply || !voice) && (
+  const actions = hasMenu && (
     <div className={cn('flex shrink-0 items-center gap-0.5 self-center [@media(pointer:coarse)]:hidden opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100', mine ? 'order-first' : 'order-last')}>
       {canReply && <button type="button" onClick={() => onReply(message)} aria-label="Reply" title="Reply" className="tg-pill flex h-8 w-8 items-center justify-center rounded-full text-white/80 hover:text-white"><CornerUpLeft size={15} /></button>}
-      {!voice && <button type="button" onClick={() => void copy()} aria-label={copied ? 'Copied' : 'Copy text'} title={copied ? 'Copied' : 'Copy'} className="tg-pill flex h-8 w-8 items-center justify-center rounded-full text-white/80 hover:text-white">{copied ? <Check size={15} /> : <Copy size={14} />}</button>}
+      <button type="button" onClick={() => setMenu(true)} aria-label="More: react, copy, delete" title="More" className="tg-pill flex h-8 w-8 items-center justify-center rounded-full text-white/80 hover:text-white"><MoreHorizontal size={16} /></button>
     </div>
   );
 
@@ -361,12 +404,16 @@ const MessageRow = memo(({ message, mine, startsRun, endsRun, canReply, myId, pe
     <button type="button" onClick={() => onJump(message.reply_to_id as string)}
       className={cn('mb-1 block w-full min-w-[9rem] rounded-lg border-l-[3px] px-2 py-1 text-left transition-colors', mine ? 'border-white/85 bg-black/15 hover:bg-black/25' : 'border-lune-300 bg-white/[0.06] hover:bg-white/10')}>
       <span className={cn('block truncate text-[13px] font-semibold leading-tight', mine ? 'text-white' : 'text-lune-300')}>{message.reply_sender_id === myId ? 'You' : peerName}</span>
-      <span className="line-clamp-2 block text-[13px] leading-snug text-white/75">{message.reply_voice ? '🎤 Voice message' : message.reply_content}</span>
+      <span className="line-clamp-2 block text-[13px] leading-snug text-white/75">{message.reply_deleted ? '🚫 Deleted message' : message.reply_voice ? '🎤 Voice message' : message.reply_image ? `📷 ${message.reply_content || 'Photo'}` : message.reply_content}</span>
     </button>
   );
 
+  const bubbleShape = cn('tg-bubble relative min-w-0 rounded-[18px]', mine ? 'tg-out' : 'tg-in',
+    endsRun ? (mine ? 'tg-tail-out rounded-br-[4px]' : 'tg-tail-in rounded-bl-[4px]') : (mine ? 'rounded-br-[6px]' : 'rounded-bl-[6px]'),
+    !startsRun && (mine ? 'rounded-tr-[6px]' : 'rounded-tl-[6px]'));
+
   return (
-    <div id={`msg-${message.id}`} className={cn('tg-row group/row relative flex px-2.5', mine ? 'justify-end' : 'justify-start', startsRun ? 'mt-2.5' : 'mt-[3px]', flash && 'tg-flash')}
+    <div id={`msg-${message.id}`} className={cn('tg-row group/row relative flex px-2.5', mine ? 'justify-end' : 'justify-start', startsRun ? 'mt-2.5' : 'mt-[3px]', grouped.length > 0 && !deleted && 'mb-4', flash && 'tg-flash')}
       style={{ touchAction: 'pan-y' }} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
       {canReply && (
         <span aria-hidden className={cn('pointer-events-none absolute left-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-white transition-colors', armed ? 'bg-lune-500' : 'bg-white/15')}
@@ -376,21 +423,39 @@ const MessageRow = memo(({ message, mine, startsRun, endsRun, canReply, myId, pe
       )}
       <div className={cn('flex max-w-[86%] items-end gap-1.5 sm:max-w-[72%]', mine ? 'flex-row' : 'flex-row')} style={{ transform: `translateX(${offset}px)`, transition: dragging ? 'none' : 'transform 0.2s ease-out' }}>
         {mine && actions}
-        {bare ? (
-          <div className="px-1">
+        {deleted ? (
+          <div className={cn(bubbleShape, 'px-3 pb-[7px] pt-[7px] text-[14.5px] italic leading-[1.35] text-white/55')}>
+            🚫 This message was deleted
+            <span aria-hidden className="inline-block h-0 w-[3.4rem]" />
+            <span className="absolute bottom-[5px] right-2.5">{meta}</span>
+          </div>
+        ) : bare ? (
+          <div className="relative px-1">
             <div className="text-[2.7rem] leading-[1.15]">{message.content}</div>
             <div className={cn('flex', mine ? 'justify-end' : 'justify-start')}>{meta}</div>
+            {chips}
           </div>
         ) : (
-          <div className={cn('tg-bubble min-w-0 rounded-[18px]', mine ? 'tg-out' : 'tg-in',
-            endsRun ? (mine ? 'tg-tail-out rounded-br-[4px]' : 'tg-tail-in rounded-bl-[4px]') : (mine ? 'rounded-br-[6px]' : 'rounded-bl-[6px]'),
-            !startsRun && (mine ? 'rounded-tr-[6px]' : 'rounded-tl-[6px]'),
-            voice ? 'px-3 pb-1.5 pt-2.5' : 'selectable whitespace-pre-wrap break-words px-3 pb-[7px] pt-[7px] text-[15.5px] leading-[1.35]')}>
+          <div className={cn(bubbleShape, voice ? 'px-3 pb-1.5 pt-2.5' : picture ? 'p-1' : 'selectable whitespace-pre-wrap break-words px-3 pb-[7px] pt-[7px] text-[15.5px] leading-[1.35]')}>
             {quote}
             {voice ? (
               <>
                 <VoiceBubble voiceId={message.voice_id as string} durationMs={message.duration_ms ?? 1000} peaks={message.peaks ?? null} mine={mine} />
                 <div className="mt-1 flex justify-end">{meta}</div>
+              </>
+            ) : picture ? (
+              <>
+                <button type="button" onClick={() => onOpenImage(message)} aria-label="Open picture" className="relative block overflow-hidden rounded-[14px]">
+                  <img src={`/api/message-image/${message.image_id}`} alt={message.content || 'Picture'} loading="lazy" className="block max-h-80 w-full min-w-[10rem] max-w-[17rem] bg-black/20 object-cover" />
+                  {!message.content && <span className="absolute bottom-1.5 right-1.5 rounded-full bg-black/55 px-2 py-1">{meta}</span>}
+                </button>
+                {message.content && (
+                  <p className="selectable whitespace-pre-wrap break-words px-2 pb-1 pt-1.5 text-[15.5px] leading-[1.35]">
+                    {renderText(message.content)}
+                    <span aria-hidden className={cn('inline-block h-0', mine ? 'w-[4.6rem]' : 'w-[3.4rem]')} />
+                    <span className="absolute bottom-[7px] right-3">{meta}</span>
+                  </p>
+                )}
               </>
             ) : (
               <>
@@ -400,6 +465,7 @@ const MessageRow = memo(({ message, mine, startsRun, endsRun, canReply, myId, pe
                 <span className="absolute bottom-[5px] right-2.5">{meta}</span>
               </>
             )}
+            {chips}
           </div>
         )}
         {!mine && actions}
@@ -407,9 +473,20 @@ const MessageRow = memo(({ message, mine, startsRun, endsRun, canReply, myId, pe
       {menu && (
         <>
           <div className="fixed inset-0 z-40" onPointerDown={() => setMenu(false)} />
-          <div role="menu" className={cn('absolute z-50 flex overflow-hidden rounded-2xl border border-white/10 bg-[#1b1530]/95 text-sm text-white shadow-xl backdrop-blur-xl', mine ? 'right-3' : 'left-3', startsRun ? '-top-11' : '-top-10')}>
-            {canReply && <button role="menuitem" type="button" onClick={() => { setMenu(false); onReply(message); }} className="flex items-center gap-2 px-4 py-2.5 active:bg-white/10"><CornerUpLeft size={15} />Reply</button>}
-            {!voice && <button role="menuitem" type="button" onClick={() => { setMenu(false); void copy(); }} className="flex items-center gap-2 px-4 py-2.5 active:bg-white/10"><Copy size={14} />Copy</button>}
+          <div role="menu" className={cn('absolute bottom-full z-50 mb-1 flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#1b1530]/95 text-sm text-white shadow-xl backdrop-blur-xl', mine ? 'right-3' : 'left-3')}>
+            {canReact && (
+              <div className="flex gap-0.5 px-2 py-1.5" role="group" aria-label="React">
+                {REACTIONS.map(emoji => {
+                  const picked = message.reactions?.some(reaction => reaction.user_id === myId && reaction.emoji === emoji);
+                  return <button key={emoji} type="button" role="menuitem" aria-label={`React ${emoji}`} onClick={() => { setMenu(false); onReact(message, emoji); }} className={cn('flex h-9 w-9 items-center justify-center rounded-full text-[22px] transition-transform active:scale-90', picked ? 'bg-white/20' : 'hover:bg-white/10')}>{emoji}</button>;
+                })}
+              </div>
+            )}
+            <div className="flex border-t border-white/10 first:border-t-0">
+              {canReply && <button role="menuitem" type="button" onClick={() => { setMenu(false); onReply(message); }} className="flex flex-1 items-center justify-center gap-2 px-4 py-2.5 active:bg-white/10"><CornerUpLeft size={15} />Reply</button>}
+              {copyable && <button role="menuitem" type="button" onClick={() => { setMenu(false); void copy(); }} className="flex flex-1 items-center justify-center gap-2 px-4 py-2.5 active:bg-white/10"><Copy size={14} />Copy</button>}
+              {mayDelete && <button role="menuitem" type="button" onClick={() => { setMenu(false); onDelete(message); }} className="flex flex-1 items-center justify-center gap-2 px-4 py-2.5 text-red-300 active:bg-white/10"><Trash2 size={14} />Delete</button>}
+            </div>
           </div>
         </>
       )}
@@ -444,6 +521,10 @@ const Composer = memo(({ peerId, myId, name, features, replyTo, onCancelReply, o
   const [emojiOpen, setEmojiOpen] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
   const sendingRef = useRef(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [picture, setPicture] = useState<File | null>(null);
+  const pictureUrl = useMemo(() => (picture ? URL.createObjectURL(picture) : ''), [picture]);
+  useEffect(() => () => { if (pictureUrl) URL.revokeObjectURL(pictureUrl); }, [pictureUrl]);
   const replyId = replyTo && features.replies ? replyTo.id : null;
 
   // Starting a reply puts the cursor in the box.
@@ -463,13 +544,19 @@ const Composer = memo(({ peerId, myId, name, features, replyTo, onCancelReply, o
   const send = async (event?: FormEvent) => {
     event?.preventDefault();
     const content = draft.trim();
-    if (!content || sendingRef.current) return;
+    if ((!content && !picture) || sendingRef.current) return;
     sendingRef.current = true;
     setSending(true);
     setSendError('');
     setEmojiOpen(false);
     try {
-      onSent(await api<ThreadMessage>(`/api/messages/${peerId}`, { method: 'POST', body: { content, ...(replyId ? { reply_to: replyId } : {}) } }));
+      if (picture) {
+        // A picture goes with whatever is typed as its caption.
+        onSent(await uploadChatImage<ThreadMessage>(peerId, await prepareImage(picture), content, replyId));
+        setPicture(null);
+      } else {
+        onSent(await api<ThreadMessage>(`/api/messages/${peerId}`, { method: 'POST', body: { content, ...(replyId ? { reply_to: replyId } : {}) } }));
+      }
       setDraft('');
       onCancelReply();
       box.current?.focus();
@@ -513,6 +600,16 @@ const Composer = memo(({ peerId, myId, name, features, replyTo, onCancelReply, o
     requestAnimationFrame(() => { el?.focus(); el?.setSelectionRange(from + emoji.length, from + emoji.length); });
   };
 
+  const pickPicture = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!PICTURE_TYPES.includes(file.type)) { setSendError('Choose a JPG, PNG, WebP or GIF picture.'); return; }
+    setSendError('');
+    setPicture(file);
+    box.current?.focus();
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Escape') { if (replyTo) onCancelReply(); else setEmojiOpen(false); return; }
     // Phone keyboards report Enter as a new line while composing; only a real Enter (not mid-word) sends.
@@ -529,9 +626,16 @@ const Composer = memo(({ peerId, myId, name, features, replyTo, onCancelReply, o
           <CornerUpLeft className="h-4 w-4 shrink-0 text-lune-300" aria-hidden />
           <div className="min-w-0 flex-1 border-l-[3px] border-lune-300 pl-2.5">
             <p className="truncate text-[13px] font-semibold text-lune-300">Replying to {replyTo.sender_id === myId ? 'yourself' : name}</p>
-            <p className="truncate text-[13px] text-white/70">{replyTo.kind === 'voice' ? '🎤 Voice message' : replyTo.content}</p>
+            <p className="truncate text-[13px] text-white/70">{replyTo.kind === 'voice' ? '🎤 Voice message' : replyTo.kind === 'image' ? `📷 ${replyTo.content || 'Photo'}` : replyTo.content}</p>
           </div>
           <button type="button" onClick={onCancelReply} aria-label="Cancel reply" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white"><X size={17} /></button>
+        </div>
+      )}
+      {picture && !recorder.recording && (
+        <div className="tg-pill mb-2 flex items-center gap-3 rounded-2xl p-2">
+          <img src={pictureUrl} alt="Picture to send" className="h-16 w-16 shrink-0 rounded-xl object-cover" />
+          <p className="min-w-0 flex-1 text-[13px] text-white/70">Add a caption below, then send.</p>
+          <button type="button" onClick={() => setPicture(null)} disabled={sending} aria-label="Remove picture" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white"><X size={17} /></button>
         </div>
       )}
       {emojiOpen && !recorder.recording && (
@@ -563,8 +667,14 @@ const Composer = memo(({ peerId, myId, name, features, replyTo, onCancelReply, o
               aria-label={`Message ${name}`} placeholder={replyTo ? 'Write your reply' : 'Message'}
               className="max-h-[132px] min-h-[2.25rem] w-full resize-none bg-transparent py-[9px] text-[16px] leading-snug text-white outline-none placeholder:text-white/45 disabled:opacity-60"
             />
+            {features.images && (
+              <>
+                <input ref={fileInput} type="file" accept={PICTURE_TYPES.join(',')} onChange={pickPicture} className="hidden" aria-label="Choose a picture" />
+                <button type="button" onClick={() => fileInput.current?.click()} disabled={sending} aria-label="Send a picture" title="Send a picture" className="-mr-2 ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/65 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-40"><ImagePlus size={20} /></button>
+              </>
+            )}
           </div>
-          {draft.trim() ? (
+          {draft.trim() || picture ? (
             <CircleButton type="submit" label="Send message" disabled={sending} className="bg-lune-500 text-white hover:bg-lune-600">
               {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <SendHorizontal size={19} />}
             </CircleButton>
@@ -596,6 +706,8 @@ const Thread = ({ peer, myId, unreadElsewhere, onActivity }: { peer: PublicProfi
   const [newBelow, setNewBelow] = useState(0);
   const [replyTo, setReplyTo] = useState<ThreadMessage | null>(null);
   const [flashId, setFlashId] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<Confirm | null>(null);
+  const [viewer, setViewer] = useState<string | null>(null);
   const [divider, setDivider] = useState<{ id: string; count: number } | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
@@ -694,6 +806,45 @@ const Thread = ({ peer, myId, unreadElsewhere, onActivity }: { peer: PublicProfi
     onActivity();
   };
 
+  // Reactions and deletes show at once and are then confirmed by the server (or put back if it refuses).
+  const patchMessage = useCallback((id: string, change: (message: ThreadMessage) => ThreadMessage) => {
+    setMessages(previous => {
+      const next = previous.map(message => message.id === id ? change(message) : message);
+      lastSeen.current = signatureOf(next);
+      return next;
+    });
+  }, []);
+
+  const react = useCallback(async (message: ThreadMessage, emoji: string) => {
+    const mineBefore = message.reactions?.find(reaction => reaction.user_id === myId)?.emoji;
+    const removing = mineBefore === emoji;
+    patchMessage(message.id, current => ({
+      ...current,
+      reactions: [...(current.reactions ?? []).filter(reaction => reaction.user_id !== myId), ...(removing ? [] : [{ emoji, user_id: myId }])],
+    }));
+    try {
+      const result = await api<{ reactions: { emoji: string; user_id: string }[] }>(`/api/message/${message.id}/react`, { method: 'POST', body: { emoji } });
+      patchMessage(message.id, current => ({ ...current, reactions: result.reactions }));
+    } catch (cause) {
+      patchMessage(message.id, current => ({ ...current, reactions: message.reactions ?? [] }));
+      showError(cause instanceof Error ? cause.message : 'Your reaction could not be saved. Please try again.');
+    }
+  }, [myId, patchMessage]);
+
+  const askDelete = useCallback((message: ThreadMessage) => setConfirm({
+    title: 'Delete this message?',
+    description: 'It is deleted for everyone in this chat. This can’t be undone.',
+    action: 'Delete',
+    run: async () => {
+      await api(`/api/message/${message.id}`, { method: 'DELETE' });
+      patchMessage(message.id, current => ({ ...current, deleted: true, content: '', image_id: null, reactions: [] }));
+      announceMessagesChanged();
+      onActivity();
+    },
+  }), [patchMessage, onActivity]);
+
+  const openImage = useCallback((message: ThreadMessage) => { if (message.image_id) setViewer(`/api/message-image/${message.image_id}`); }, []);
+
   const blocked = !!member?.blocked;
   const shown = member ?? { username: peer.username, display_name: peer.display_name ?? '', avatar_url: peer.avatar_url };
   const name = displayNameOf(shown);
@@ -761,7 +912,8 @@ const Thread = ({ peer, myId, unreadElsewhere, onActivity }: { peer: PublicProfi
                   )}
                   <MessageRow message={message} mine={message.sender_id === myId}
                     startsRun={!sameRun(messages[index - 1], message)} endsRun={!sameRun(message, messages[index + 1])}
-                    canReply={canReply} myId={myId} peerName={name} flash={flashId === message.id} onReply={startReply} onJump={jumpTo} />
+                    canReply={canReply} canReact={!!features.reactions && !blocked} canDelete={!!features.deletes} myId={myId} peerName={name} flash={flashId === message.id}
+                    onReply={startReply} onJump={jumpTo} onReact={react} onDelete={askDelete} onOpenImage={openImage} />
                 </Fragment>
               ))}
             </section>
@@ -782,6 +934,8 @@ const Thread = ({ peer, myId, unreadElsewhere, onActivity }: { peer: PublicProfi
       ) : (
         <Composer peerId={peer.id} myId={myId} name={name} features={features} replyTo={replyTo} onCancelReply={cancelReply} onSent={appendSent} />
       )}
+      {confirm && <ConfirmDialog confirm={confirm} onClose={() => setConfirm(null)} />}
+      {viewer && <Lightbox images={[viewer]} start={0} onClose={() => setViewer(null)} />}
     </div>
   );
 };
