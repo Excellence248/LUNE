@@ -319,7 +319,7 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
               disabled={!currentUser || pending}
               onClick={() => handleReaction('like')}
             />
-            <ActionButton icon={Coins} tone="amber" label="Tip (unavailable)" onClick={() => setIsTipOpen(true)} />
+            {!isOwnPost && <ActionButton icon={Coins} tone="amber" label={currentUser ? `Tip @${displayUsername || 'author'} in USDC` : 'Log in to tip'} disabled={!currentUser} onClick={() => setIsTipOpen(true)} />}
           </div>
 
           {!showComments && !!post.replies?.length && (() => {
@@ -408,7 +408,7 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
         </div>
       </div>
 
-      <TipModal isOpen={isTipOpen} onClose={() => setIsTipOpen(false)} recipient={displayUsername || 'Anonymous'} />
+      {isTipOpen && <TipModal isOpen onClose={() => setIsTipOpen(false)} recipient={displayUsername || 'Anonymous'} postId={isRepost && post.original_post_id ? post.original_post_id : post.id} />}
       {reporting && <ReportDialog target={reporting} onClose={() => setReporting(null)} />}
       {confirm && <ConfirmDialog confirm={confirm} onClose={() => setConfirm(null)} />}
     </article>
