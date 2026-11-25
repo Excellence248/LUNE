@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 
 /*
  * Background pictures. A member can pick a preset or upload their own picture for the whole app and,
@@ -19,7 +19,8 @@ export interface Appearance {
   doodles: boolean;
 }
 
-export interface Preset { id: string; name: string; css: string; group: 'space' | 'color' }
+/** `scene` is the file name of a rendered space scene in /backgrounds (landscape, -portrait for phones, -thumb for the picker). */
+export interface Preset { id: string; name: string; css: string; group: 'space' | 'color'; scene?: string }
 
 const blob = (size: string, at: string, color: string) => `radial-gradient(${size} at ${at}, ${color}, transparent 62%)`;
 
@@ -34,17 +35,23 @@ const COLORS: Omit<Preset, 'group'>[] = [
   { id: 'graphite', name: 'Graphite', css: `${blob('60rem 40rem', '30% 0%', 'rgba(148,163,184,.25)')}, ${blob('40rem 30rem', '100% 100%', 'rgba(100,116,139,.25)')}, #0b0d12` },
 ];
 
-/** Original space scenes drawn by scripts/generate-backgrounds.mjs and served from /backgrounds. */
-const scene = (file: string) => `url("/backgrounds/${file}.svg") center / cover no-repeat, #05030f`;
+/**
+ * Original space scenes drawn by scripts/generate-backgrounds.mjs and rendered to plain JPEGs by
+ * scripts/render-backgrounds.mjs. They are bitmaps on purpose: a browser can scale one for free, while
+ * a filter-heavy vector image is redrawn from scratch every time the screen resizes (every time a phone
+ * keyboard opens), which made chats hang.
+ */
+const picture = (file: string, variant = '') => `url("/backgrounds/${file}${variant}.jpg") center / cover no-repeat, #05030f`;
+const scene = (file: string) => ({ css: picture(file, '-thumb'), scene: file });
 const SPACE: Omit<Preset, 'group'>[] = [
-  { id: 'nebula', name: 'Nebula', css: scene('nebula') },
-  { id: 'moonrise', name: 'Moonrise', css: scene('moonrise') },
-  { id: 'northern', name: 'Aurora', css: scene('aurora') },
-  { id: 'galaxy', name: 'Galaxy', css: scene('galaxy') },
-  { id: 'giant', name: 'Ringed planet', css: scene('planet') },
-  { id: 'comet', name: 'Comet', css: scene('comet') },
-  { id: 'eclipse', name: 'Eclipse', css: scene('eclipse') },
-  { id: 'stars', name: 'Constellations', css: scene('constellations') },
+  { id: 'nebula', name: 'Nebula', ...scene('nebula') },
+  { id: 'moonrise', name: 'Moonrise', ...scene('moonrise') },
+  { id: 'northern', name: 'Aurora', ...scene('aurora') },
+  { id: 'galaxy', name: 'Galaxy', ...scene('galaxy') },
+  { id: 'giant', name: 'Ringed planet', ...scene('planet') },
+  { id: 'comet', name: 'Comet', ...scene('comet') },
+  { id: 'eclipse', name: 'Eclipse', ...scene('eclipse') },
+  { id: 'stars', name: 'Constellations', ...scene('constellations') },
 ];
 
 export const PRESETS: Preset[] = [
@@ -120,10 +127,24 @@ const subscribe = (listener: () => void) => { listeners.add(listener); return ()
 export const useAppearance = () => useSyncExternalStore(subscribe, () => state, () => DEFAULT);
 
 /** The CSS `background` for a choice, or null for "default" when the area has its own default look. */
-export const backgroundCss = (bg: Background, fallbackPreset?: string): string | null => {
+export const backgroundCss = (bg: Background, fallbackPreset?: string, portrait = false): string | null => {
   if (bg.kind === 'image') return `url("${bg.data}") center / cover no-repeat`;
   const id = bg.kind === 'preset' ? bg.id : fallbackPreset;
-  return PRESETS.find(preset => preset.id === id)?.css ?? null;
+  const preset = PRESETS.find(item => item.id === id);
+  // Full-size scenes come in a landscape and a phone-shaped crop; the picker uses the small thumbnail (preset.css).
+  return preset?.scene ? picture(preset.scene, portrait ? '-portrait' : '') : preset?.css ?? null;
+};
+
+/** True while the screen is taller than it is wide, so phones get the portrait crop of a scene. */
+export const useIsPortrait = () => {
+  const [portrait, setPortrait] = useState(() => typeof window !== 'undefined' && window.matchMedia('(orientation: portrait)').matches);
+  useEffect(() => {
+    const query = window.matchMedia('(orientation: portrait)');
+    const update = () => setPortrait(query.matches);
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+  return portrait;
 };
 
 const TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];

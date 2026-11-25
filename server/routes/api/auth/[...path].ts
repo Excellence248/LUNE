@@ -11,6 +11,7 @@ const LIMITED: Record<string, keyof typeof LIMITS> = {
   '/send-verification-email': 'authEmail',
   '/request-password-reset': 'authEmail',
   '/reset-password': 'signIn',
+  '/change-password': 'signIn',
   '/email-otp/send-verification-otp': 'authEmail',
   '/forget-password/email-otp': 'authEmail',
   '/email-otp/verify-email': 'signIn',

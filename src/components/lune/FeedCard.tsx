@@ -2,7 +2,11 @@
 import VerifiedBadge from '@/components/lune/VerifiedBadge';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { MessageCircle, Repeat2, Heart, Coins, SendHorizontal, MoreHorizontal, Trash2, Flag, Ban } from 'lucide-react';
+import { MessageCircle, Repeat2, Heart, Coins, SendHorizontal, MoreHorizontal, Trash2, Flag, Ban, Users, ListTree, Bookmark, Quote, Pencil, Pin } from 'lucide-react';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import CreatePost from './CreatePost';
+import { PollView, QuoteCard } from './PostExtras';
+import ImageGrid from './ImageGrid';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import ConfirmDialog, { type Confirm } from './ConfirmDialog';
@@ -16,6 +20,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { showError, showSuccess } from '@/utils/toast';
 import { shortWalletAddress } from '@/lib/solana-wallet';
 import { displayNameOf } from '@/lib/names';
+import { api } from '@/lib/api';
 
 interface FeedCardProps {
   post: Post & { repostedBy?: string };
@@ -23,14 +28,16 @@ interface FeedCardProps {
 }
 
 /** Highlight $TICKER cashtags and link them to the token page. */
-const renderContent = (text: string, onTicker: (t: string) => void) =>
-  text.split(/(\$[A-Za-z][A-Za-z0-9]{1,9}\b)/g).map((part, i) =>
-    /^\$[A-Za-z][A-Za-z0-9]{1,9}$/.test(part) ? (
+const renderContent = (text: string, go: (path: string) => void) =>
+  text.split(/(\$[A-Za-z][A-Za-z0-9]{1,9}\b|(?<![A-Za-z0-9_])@[A-Za-z0-9_]{3,64}|(?<![A-Za-z0-9_&])#[A-Za-z][A-Za-z0-9_]{1,49})/g).map((part, i) =>
+    /^(\$[A-Za-z][A-Za-z0-9]{1,9}|@[A-Za-z0-9_]{3,64}|#[A-Za-z][A-Za-z0-9_]{1,49})$/.test(part) ? (
       <button
         key={i}
         onClick={e => {
           e.stopPropagation();
-          onTicker(part.slice(1).toUpperCase());
+          if (part[0] === '$') go(`/token/${encodeURIComponent(part.slice(1).toUpperCase())}`);
+          else if (part[0] === '@') go(`/profile/${encodeURIComponent(part.slice(1))}`);
+          else go(`/search?q=${encodeURIComponent(part)}`);
         }}
         className="font-semibold text-lune-300 hover:text-lune-200 hover:underline underline-offset-2"
       >
@@ -98,7 +105,13 @@ const ActionButton = ({
 const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardProps) => {
   const navigate = useNavigate();
   const { user: currentUser } = useWallet();
-  const { toggleLike, toggleRepost, addComment, followUser, unfollowUser, isFollowing, followingLoading, followingError, deletePost, deleteReply, isBlocked, blockUser } = useSocial();
+  const { toggleLike, toggleRepost, addComment, followUser, unfollowUser, isFollowing, followingLoading, followingError, deletePost, deleteReply, isBlocked, blockUser, isBookmarked, toggleBookmark } = useSocial();
+  const [quoting, setQuoting] = useState(false);
+  // Editing your own post's text, and whether it is pinned to your profile (changed here).
+  const [editing, setEditing] = useState(false);
+  const [draftText, setDraftText] = useState('');
+  const [edited, setEdited] = useState<{ content: string; at: string } | null>(null);
+  const [pinnedHere, setPinnedHere] = useState<boolean | null>(null);
   const [reporting, setReporting] = useState<ReportTarget | null>(null);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [deleted, setDeleted] = useState(false);
@@ -109,6 +122,10 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
   const [likeOverride, setLikeOverride] = useState<{ userId: string; active: boolean } | null>(null);
   const [repostOverride, setRepostOverride] = useState<{ userId: string; active: boolean } | null>(null);
   const [savedReplies, setSavedReplies] = useState<Reply[]>([]);
+  // Which reply the box is answering (null: the post itself), and likes on replies changed here.
+  const [replyTarget, setReplyTarget] = useState<Reply | null>(null);
+  const [replyLikes, setReplyLikes] = useState<Record<string, { active: boolean; count: number }>>({});
+  const replyBox = useRef<HTMLInputElement>(null);
   const busy = useRef(false);
 
   useEffect(() => { setLikeOverride(null); }, [sourcePost.likes, currentUser?.id]);
@@ -126,6 +143,27 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
   const isReposted = currentUser ? post.reposts?.some(r => r.user_id === currentUser.id) : false;
   const following = isFollowing(post.user_id);
   const isOwnPost = currentUser?.id === post.user_id;
+  const canEdit = isOwnPost && post.post_type !== 'repost' && Date.now() - new Date(post.created_at).getTime() < 15 * 60 * 1000;
+  const pinned = pinnedHere ?? !!post.pinned;
+
+  const saveEdit = async () => {
+    const text = draftText.trim();
+    if (!text) return;
+    await handleAction(async () => {
+      const saved = await api<Post>(`/api/posts/${post.id}`, { method: 'PATCH', body: { content: text } });
+      setEdited({ content: saved.content, at: saved.edited_at ?? new Date().toISOString() });
+      setEditing(false);
+      showSuccess('Post updated');
+    });
+  };
+
+  const togglePin = async () => {
+    await handleAction(async () => {
+      const result = await api<{ pinned: boolean }>(`/api/posts/${post.id}/pin`, { method: 'POST', body: {} });
+      setPinnedHere(result.pinned);
+      showSuccess(result.pinned ? 'Pinned to your profile' : 'Unpinned from your profile');
+    });
+  };
 
   const handleAction = async (action: () => Promise<unknown>) => {
     if (busy.current) return false;
@@ -155,18 +193,48 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
     e.preventDefault();
     if (!commentInput.trim() || !currentUser) return;
     let reply: Reply | undefined;
-    if (await handleAction(async () => { reply = await addComment(post.id, commentInput); })) {
+    if (await handleAction(async () => { reply = await addComment(post.id, commentInput, replyTarget?.id); })) {
       const savedReply = reply;
       if (savedReply) setSavedReplies(previous => [...previous, savedReply]);
       setCommentInput('');
+      setReplyTarget(null);
     }
   };
+
+  const answer = (reply: Reply) => {
+    setReplyTarget(reply);
+    setShowComments(true);
+    requestAnimationFrame(() => replyBox.current?.focus());
+  };
+
+  const likeReply = async (reply: Reply) => {
+    if (!currentUser) return;
+    try {
+      const result = await api<{ active: boolean; count: number }>(`/api/replies/${reply.id}/like`, { method: 'POST', body: {} });
+      setReplyLikes(previous => ({ ...previous, [reply.id]: result }));
+    } catch (error) {
+      showError(error instanceof Error ? error.message : 'Your like could not be saved. Please try again.');
+    }
+  };
+
+  // Replies in conversation order: each reply to the post, then everything that answers it (at any depth).
+  const threaded = (() => {
+    const list = post.replies ?? [];
+    const byId = new Map(list.map(reply => [reply.id, reply]));
+    const rootOf = (reply: Reply) => {
+      let current = reply;
+      for (let hops = 0; current.parent_id && byId.has(current.parent_id) && hops < 50; hops++) current = byId.get(current.parent_id) as Reply;
+      return current.id;
+    };
+    const tops = list.filter(reply => !reply.parent_id || !byId.has(reply.parent_id));
+    return tops.flatMap(top => [{ reply: top, nested: false }, ...list.filter(reply => reply.id !== top.id && rootOf(reply) === top.id).map(reply => ({ reply, nested: true }))]);
+  })();
 
   const navigateToProfile = (username?: string) => {
     if (username) navigate(`/profile/${encodeURIComponent(username)}`);
   };
 
-  const goToTicker = (sym: string) => navigate(`/token/${encodeURIComponent(sym)}`);
+  const goTo = (path: string) => navigate(path);
 
   const isRepost = post.post_type === 'repost';
   const displayUsername = isRepost ? post.repost_username : post.profiles?.username;
@@ -202,6 +270,9 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
 
   return (
     <article className="lune-spot lune-spot--soft px-4 md:px-6 py-4 hover:bg-white/[0.015] transition-colors">
+      {pinned && post.pinned !== undefined && (
+        <p className="mb-2 ml-7 flex items-center gap-2 text-xs font-medium text-white/40"><Pin size={13} className="text-lune-300" />Pinned</p>
+      )}
       {(post.repostedBy || (isRepost && post.profiles?.username)) && (
         <button
           onClick={() => navigateToProfile(post.repostedBy || post.profiles?.username)}
@@ -236,6 +307,7 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
             <span className="text-white/25">·</span>
             <Link to={`/post/${post.id}`} aria-label="Open post and replies" className="shrink-0 text-sm text-white/35 hover:underline">
               <time dateTime={post.created_at} title={new Date(post.created_at).toLocaleString()}>{shortAgo(post.created_at)}</time>
+              {(edited || post.edited_at) && <span className="ml-1 text-white/30" title={`Edited ${new Date(edited?.at ?? post.edited_at as string).toLocaleString()}`}>· edited</span>}
             </Link>
             <div className="ml-auto flex shrink-0 items-center gap-1">
             {!isOwnPost && currentUser && !isRepost && (
@@ -262,7 +334,11 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   {isOwnPost ? (
-                    <DropdownMenuItem className="text-red-300 focus:text-red-200" onSelect={askDeletePost}><Trash2 className="mr-2 h-4 w-4" />Delete post</DropdownMenuItem>
+                    <>
+                      {canEdit && <DropdownMenuItem onSelect={() => { setDraftText(edited?.content ?? post.content); setEditing(true); }}><Pencil className="mr-2 h-4 w-4" />Edit post</DropdownMenuItem>}
+                      {!isRepost && !post.thread_root_id && <DropdownMenuItem onSelect={() => void togglePin()}><Pin className="mr-2 h-4 w-4" />{pinned ? 'Unpin from profile' : 'Pin to your profile'}</DropdownMenuItem>}
+                      <DropdownMenuItem className="text-red-300 focus:text-red-200" onSelect={askDeletePost}><Trash2 className="mr-2 h-4 w-4" />Delete post</DropdownMenuItem>
+                    </>
                   ) : (
                     <>
                       <DropdownMenuItem onSelect={() => setReporting({ type: 'post', id: post.id, label: `Post by @${displayUsername}` })}><Flag className="mr-2 h-4 w-4" />Report post</DropdownMenuItem>
@@ -276,12 +352,28 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
           </div>
 
           <p className="selectable mt-1 text-[15px] text-white/85 leading-relaxed whitespace-pre-wrap break-words">
-            {renderContent(body, goToTicker)}
+            {editing ? null : renderContent(edited?.content ?? body, goTo)}
           </p>
+          {editing && (
+            <div className="mt-2 space-y-2">
+              <textarea value={draftText} maxLength={2000} rows={3} autoFocus aria-label="Edit your post" onChange={event => setDraftText(event.target.value)}
+                className="lune-input w-full resize-none text-[16px] leading-relaxed" />
+              <div className="flex items-center justify-end gap-2">
+                <span className="mr-auto text-xs text-white/35">You can edit for 15 minutes after posting.</span>
+                <button type="button" onClick={() => setEditing(false)} disabled={pending} className="rounded-full px-3 py-1.5 text-sm text-white/60 hover:text-white">Cancel</button>
+                <button type="button" onClick={() => void saveEdit()} disabled={pending || !draftText.trim()} className="lune-btn h-9 px-4 text-sm">{pending ? 'Saving…' : 'Save'}</button>
+              </div>
+            </div>
+          )}
 
-          {post.image_url && (
-            <div className="mt-3 rounded-2xl overflow-hidden border border-white/[0.08] max-w-xl">
-              <img src={post.image_url} alt="Post attachment" loading="lazy" className="w-full h-auto max-h-[520px] object-cover" />
+          <ImageGrid images={post.images?.length ? post.images : post.image_url ? [post.image_url] : []} />
+          {post.quote && <QuoteCard quote={post.quote} />}
+          {post.poll && <PollView postId={post.id} poll={post.poll} />}
+
+          {(post.community || (!!post.thread_count && !initialCommentsOpen)) && (
+            <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs">
+              {post.community && <Link to={`/communities/${post.community.slug}`} className="inline-flex items-center gap-1 rounded-full border border-lune-400/25 bg-lune-500/10 px-2.5 py-1 font-medium text-lune-200 hover:bg-lune-500/20"><Users size={12} />{post.community.name}</Link>}
+              {!!post.thread_count && !initialCommentsOpen && <Link to={`/post/${post.id}`} className="inline-flex items-center gap-1 rounded-full border border-white/10 px-2.5 py-1 font-medium text-white/60 hover:border-lune-400/40 hover:text-white"><ListTree size={12} />Show thread · {post.thread_count + 1} posts</Link>}
             </div>
           )}
 
@@ -304,6 +396,14 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
               onClick={() => handleReaction('repost')}
             />
             <ActionButton
+              icon={Quote}
+              tone="up"
+              label={!currentUser ? 'Log in to quote' : 'Quote this post'}
+              count={post.quote_count || 0}
+              disabled={!currentUser}
+              onClick={() => setQuoting(true)}
+            />
+            <ActionButton
               icon={Heart}
               tone="pink"
               label={!currentUser ? 'Log in to like' : isLiked ? 'Unlike' : 'Like'}
@@ -313,7 +413,17 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
               disabled={!currentUser || pending}
               onClick={() => handleReaction('like')}
             />
-            <ActionButton icon={Coins} tone="amber" label="Tip (unavailable)" onClick={() => setIsTipOpen(true)} />
+            {currentUser && (
+              <ActionButton
+                icon={Bookmark}
+                tone="lune"
+                fill
+                label={isBookmarked(post.id) ? 'Remove from saved' : 'Save post'}
+                active={isBookmarked(post.id)}
+                onClick={() => void toggleBookmark(post.id).then(active => showSuccess(active ? 'Saved to your bookmarks' : 'Removed from your bookmarks')).catch(error => showError(error instanceof Error ? error.message : 'That could not be saved.'))}
+              />
+            )}
+            {!isOwnPost && <ActionButton icon={Coins} tone="amber" label={currentUser ? `Tip @${displayUsername || 'author'} in USDC` : 'Log in to tip'} disabled={!currentUser} onClick={() => setIsTipOpen(true)} />}
           </div>
 
           {!showComments && !!post.replies?.length && (() => {
@@ -334,9 +444,12 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
                 {!initialCommentsOpen && <Link to={`/post/${post.id}`} className="text-lune-300 hover:underline">Open post</Link>}
               </div>
               <div className="max-h-[28rem] space-y-3 overflow-y-auto pr-1">
-              {post.replies?.length ? (
-                post.replies.map(reply => (
-                  <div key={reply.id} className="flex gap-2.5">
+              {threaded.length ? (
+                threaded.map(({ reply, nested }) => {
+                  const liked = replyLikes[reply.id]?.active ?? !!(currentUser && reply.likes?.some(like => like.user_id === currentUser.id));
+                  const likeCount = replyLikes[reply.id]?.count ?? reply.likes?.length ?? 0;
+                  return (
+                  <div key={reply.id} className={cn('flex gap-2.5', nested && 'ml-4 border-l border-white/10 pl-3')}>
                     <button onClick={() => navigateToProfile(reply.profiles?.username)} className="shrink-0 h-fit">
                       <Avatar className="w-7 h-7 ring-1 ring-white/10">
                         <AvatarImage src={reply.profiles?.avatar_url} />
@@ -364,25 +477,41 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
                           )
                         )}
                       </div>
-                      <p className="selectable whitespace-pre-wrap text-sm text-white/70 leading-relaxed break-words">{reply.content}</p>
+                      {nested && reply.reply_to_username && <p className="text-[11px] text-white/35">Replying to <button onClick={() => navigateToProfile(reply.reply_to_username ?? undefined)} className="text-lune-300 hover:underline">@{reply.reply_to_username}</button></p>}
+                      <p className="selectable whitespace-pre-wrap text-sm text-white/70 leading-relaxed break-words">{renderContent(reply.content, goTo)}</p>
+                      <div className="mt-1 flex items-center gap-4 text-[11px] text-white/40">
+                        <button type="button" disabled={!currentUser} onClick={() => answer(reply)} aria-label={`Reply to @${reply.profiles?.username ?? 'this reply'}`} className="flex items-center gap-1 hover:text-lune-300 disabled:opacity-50"><MessageCircle size={13} />Reply</button>
+                        <button type="button" disabled={!currentUser} onClick={() => void likeReply(reply)} aria-pressed={liked} aria-label={liked ? 'Unlike reply' : 'Like reply'} className={cn('flex items-center gap-1 transition-colors disabled:opacity-50', liked ? 'text-pink-400' : 'hover:text-pink-400')}>
+                          <Heart size={13} className={cn(liked && 'fill-current')} />{likeCount > 0 && <span className="tabular-nums">{likeCount}</span>}
+                        </button>
+                      </div>
                     </div>
                   </div>
-                ))
+                  );
+                })
               ) : (
                 <p className="text-xs text-white/35 px-1">No replies yet.</p>
               )}
               </div>
 
               {currentUser ? (
-                <form onSubmit={handleComment} className="flex gap-2 pt-1">
+                <form onSubmit={handleComment} className="space-y-1.5 pt-1">
+                  {replyTarget && (
+                    <p className="flex items-center gap-2 px-1 text-xs text-white/50">
+                      Replying to <span className="font-semibold text-lune-300">@{replyTarget.profiles?.username}</span>
+                      <button type="button" onClick={() => setReplyTarget(null)} aria-label="Cancel replying to this reply" className="ml-auto text-white/40 hover:text-white">✕</button>
+                    </p>
+                  )}
+                  <div className="flex gap-2">
                   <input
+                    ref={replyBox}
                     type="text"
                     value={commentInput}
                     disabled={pending}
                     maxLength={1000}
                     aria-label="Write a public reply"
                     onChange={e => setCommentInput(e.target.value)}
-                    placeholder="Post your public reply"
+                    placeholder={replyTarget ? `Reply to @${replyTarget.profiles?.username ?? 'them'}` : 'Post your public reply'}
                     className="lune-input rounded-full px-4 py-2"
                   />
                   <button
@@ -393,6 +522,7 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
                   >
                     <SendHorizontal size={15} />
                   </button>
+                  </div>
                 </form>
               ) : (
                 <p className="text-xs text-white/35 px-1"><Link to="/signin" className="text-lune-300 hover:underline">Log in</Link> to reply.</p>
@@ -402,7 +532,15 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
         </div>
       </div>
 
-      <TipModal isOpen={isTipOpen} onClose={() => setIsTipOpen(false)} recipient={displayUsername || 'Anonymous'} />
+      {quoting && (
+        <Dialog open onOpenChange={open => { if (!open) setQuoting(false); }}>
+          <DialogContent className="max-w-xl overflow-hidden rounded-3xl border-white/10 p-0 glass-strong text-white">
+            <DialogTitle className="sr-only">Quote this post</DialogTitle>
+            <CreatePost quote={sourcePost} onPosted={() => setQuoting(false)} />
+          </DialogContent>
+        </Dialog>
+      )}
+      {isTipOpen && <TipModal isOpen onClose={() => setIsTipOpen(false)} recipient={displayUsername || 'Anonymous'} postId={isRepost && post.original_post_id ? post.original_post_id : post.id} />}
       {reporting && <ReportDialog target={reporting} onClose={() => setReporting(null)} />}
       {confirm && <ConfirmDialog confirm={confirm} onClose={() => setConfirm(null)} />}
     </article>

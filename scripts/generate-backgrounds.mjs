@@ -41,7 +41,10 @@ const STAR_GLOW = '<radialGradient id="sg"><stop offset="0" stop-color="#fff" st
 const svg = (defs, body) =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice"><defs>${STAR_GLOW}${defs}</defs>${body}</svg>\n`;
 
-const save = (name, content) => { writeFileSync(new URL(name, OUT), content); console.log('wrote', name, Math.round(content.length / 1024) + ' KB'); };
+// Scenes are sources: scripts/render-backgrounds.mjs turns them into the JPEGs the app loads. The doodle pattern is used as is.
+const SRC = new URL('./backgrounds-src/', import.meta.url);
+mkdirSync(SRC, { recursive: true });
+const save = (name, content) => { writeFileSync(new URL(name, name === 'doodles.svg' ? OUT : SRC), content); console.log('wrote', name, Math.round(content.length / 1024) + ' KB'); };
 
 /** A cloudy nebula layer made from fractal noise, tinted and shaped by the colour matrix. */
 const nebulaFilter = (id, seed, freq, [r, g, b], gain = 2.1, bias = -0.62, blur = 5) =>

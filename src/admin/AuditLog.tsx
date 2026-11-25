@@ -12,6 +12,7 @@ const ACTION_LABELS: Record<AuditEntry['action'], string> = {
   revoke_badge: 'Revoked badge',
   resolve_report: 'Resolved report',
   dismiss_report: 'Dismissed report',
+  remove_community: 'Removed community',
 };
 
 const detail = (entry: AuditEntry) => {

@@ -1,14 +1,19 @@
-import { Palette } from 'lucide-react';
+import { Settings as SettingsIcon } from 'lucide-react';
 import Layout from '@/components/lune/Layout';
 import AppearancePanel from '@/components/lune/AppearancePanel';
+import { AccountSection, BlockedSection, DataSection, SettingsCard } from '@/components/lune/AccountSettings';
 import { PageHeader } from '@/components/lune/Brand';
+import { PushSetting } from '@/components/lune/PushControl';
 
 const Settings = () => (
   <Layout>
     <div className="mx-auto max-w-3xl">
-      <PageHeader eyebrow="Settings" icon={Palette} title="Appearance" description="Make Lune yours: pick a background for the app and a wallpaper for your chats, or use your own picture." />
-      <div className="lune-card p-5 sm:p-7"><AppearancePanel /></div>
-      <p className="mt-5 text-center text-xs text-white/30">Account settings such as email and password changes are not available yet.</p>
+      <PageHeader eyebrow="Settings" icon={SettingsIcon} title="Make Lune yours" description="Notifications, your account, who you’ve blocked, how Lune looks, and your data." />
+      <SettingsCard title="Notifications"><PushSetting /></SettingsCard>
+      <AccountSection />
+      <BlockedSection />
+      <SettingsCard title="Appearance" description="Pick a background for the app and a wallpaper for your chats, or use your own picture."><AppearancePanel /></SettingsCard>
+      <DataSection />
     </div>
   </Layout>
 );

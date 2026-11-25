@@ -1,7 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Check, CheckCheck, ChevronDown, Loader2, MessageCircle, Mic, Palette, Phone, Search, SendHorizontal, Smile, Trash2, Video } from 'lucide-react';
+import { ArrowLeft, Check, CheckCheck, ChevronDown, Copy, CornerUpLeft, ImagePlus, Loader2, MessageCircle, Mic, MoreHorizontal, Palette, Phone, Search, SendHorizontal, Smile, Trash2, Video, X } from 'lucide-react';
+import ConfirmDialog, { type Confirm } from '@/components/lune/ConfirmDialog';
+import { Lightbox } from '@/components/lune/ImageGrid';
+import { prepareImage, PICTURE_TYPES } from '@/lib/images';
+import { showError } from '@/utils/toast';
 import { differenceInDays, format, isSameDay, isToday, isYesterday } from 'date-fns';
 import Layout from '@/components/lune/Layout';
 import VerifiedBadge from '@/components/lune/VerifiedBadge';
@@ -16,10 +20,11 @@ import { useSocial, type PublicProfile } from '@/context/SocialContext';
 import { useCall } from '@/context/CallContext';
 import { useWallet } from '@/context/WalletContext';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { announceMessagesChanged, useUnreadMessages } from '@/hooks/useUnreadMessages';
+import { announceMessagesChanged } from '@/hooks/useUnreadMessages';
+import { useVisualViewport } from '@/hooks/useVisualViewport';
 import { useVoiceRecorder, type Recording } from '@/hooks/useVoiceRecorder';
-import { ApiError, api, uploadVoice } from '@/lib/api';
-import { DEFAULT_CHAT_PRESET, DOODLES_URL, backgroundCss, useAppearance } from '@/lib/appearance';
+import { ApiError, api, uploadChatImage, uploadVoice } from '@/lib/api';
+import { DEFAULT_CHAT_PRESET, DOODLES_URL, backgroundCss, useAppearance, useIsPortrait } from '@/lib/appearance';
 import { displayNameOf } from '@/lib/names';
 import { cn } from '@/lib/utils';
 
@@ -37,13 +42,44 @@ interface Conversation {
 
 interface ThreadMember { id: string; username: string; display_name: string; avatar_url: string; blocked: boolean }
 interface ThreadMessage {
-  id: string; sender_id: string; kind: 'text' | 'voice'; content: string; created_at: string; read_at: string | null;
+  id: string; sender_id: string; kind: 'text' | 'voice' | 'image'; content: string; created_at: string; read_at: string | null;
+  /** Picture messages: the picture (the text is its caption). Deleted messages come back blank with deleted = true. */
+  image_id?: string | null; deleted?: boolean;
+  /** Emoji reactions, one per member. */
+  reactions?: { emoji: string; user_id: string }[];
+  reply_image?: boolean; reply_deleted?: boolean;
   /** Voice messages only: the recording, its length and the waveform to draw. */
   voice_id?: string | null; duration_ms?: number | null; peaks?: number[] | null;
+  /** Replies only: the message this one answers, with its text and author (empty text + reply_voice = a voice message). */
+  reply_to_id?: string | null; reply_sender_id?: string | null; reply_content?: string | null; reply_voice?: boolean;
 }
+interface Features { voice: boolean; replies: boolean; images?: boolean; deletes?: boolean; reactions?: boolean }
+const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥'];
+interface ThreadData { member: ThreadMember; messages: ThreadMessage[]; features: Features; unreadIds: string[] }
 
 const MAX_LENGTH = 2000;
 const EMOJIS = ['😀', '😂', '🥰', '😍', '😘', '😎', '🤩', '🥳', '😭', '😡', '🤔', '😴', '👍', '👎', '🙏', '👏', '🙌', '🤝', '👀', '🔥', '💜', '❤️', '💯', '🎉', '🌙', '⭐', '✨', '💫', '🌠', '🚀', '🪐', '☄️', '🌌', '🛸', '👽', '🧑‍🚀'];
+
+// ---------------------------------------------------------------------------------------------
+// Opening a conversation should feel instant: remember recent ones (per signed-in member), and warm one
+// up when you hover or touch it. A warm-up is a "peek": it never marks anything as read.
+const threadCache = new Map<string, { at: number; data: ThreadData }>();
+const warming = new Set<string>();
+const cacheKey = (me: string, peer: string) => `${me}:${peer}`;
+const remember = (me: string, peer: string, data: ThreadData) => {
+  threadCache.set(cacheKey(me, peer), { at: Date.now(), data });
+  if (threadCache.size > 24) threadCache.delete(threadCache.keys().next().value as string);
+};
+const warmThread = (me: string, peer: string) => {
+  const key = cacheKey(me, peer);
+  const hit = threadCache.get(key);
+  if ((hit && Date.now() - hit.at < 20_000) || warming.has(key)) return;
+  warming.add(key);
+  api<ThreadData>(`/api/messages/${peer}?peek=1`)
+    .then(data => { if (!threadCache.has(key) || Date.now() - (threadCache.get(key)?.at ?? 0) > 20_000) remember(me, peer, data); })
+    .catch(() => undefined)
+    .finally(() => warming.delete(key));
+};
 
 /** One tick = sent, two = read (as in Telegram). */
 const Ticks = ({ read, className }: { read: boolean; className?: string }) =>
@@ -52,7 +88,8 @@ const Ticks = ({ read, className }: { read: boolean; className?: string }) =>
 /** The chat wallpaper: a space scene (yours or Nebula), the faint doodle pattern, and a dimming layer for readability. */
 const ChatWallpaper = () => {
   const { chat, chatDim, doodles } = useAppearance();
-  const css = backgroundCss(chat, DEFAULT_CHAT_PRESET);
+  const portrait = useIsPortrait();
+  const css = backgroundCss(chat, DEFAULT_CHAT_PRESET, portrait);
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden" style={{ background: css ?? undefined }}>
       <div className="absolute inset-0 bg-black" style={{ opacity: chat.kind === 'default' ? 0.18 : chatDim }} />
@@ -151,7 +188,8 @@ const ConversationList = ({ conversations, loading, error, activeUsername, myId,
             {!searching && !results.length && <li className="px-3 py-3 text-sm text-white/45">No one matches “{term}”.</li>}
             {results.map(person => (
               <li key={person.id}>
-                <Link to={`/messages/${encodeURIComponent(person.username)}`} onClick={() => setQuery('')} className="flex items-center gap-3 rounded-2xl px-3 py-2.5 transition-colors hover:bg-white/[0.07]">
+                <Link to={`/messages/${encodeURIComponent(person.username)}`} onClick={() => setQuery('')} onPointerEnter={() => warmThread(myId, person.id)} onFocus={() => warmThread(myId, person.id)}
+                  className="flex items-center gap-3 rounded-2xl px-3 py-2.5 transition-colors hover:bg-white/[0.07]">
                   <Person member={person as { username: string; display_name?: string; avatar_url: string }} size="h-12 w-12" />
                   <div className="min-w-0"><p className="truncate text-[15px] font-semibold">{displayNameOf(person)} <VerifiedBadge username={person.username} /></p><p className="truncate text-sm text-white/45">@{person.username}</p></div>
                 </Link>
@@ -159,7 +197,11 @@ const ConversationList = ({ conversations, loading, error, activeUsername, myId,
             ))}
           </ul>
         ) : loading ? (
-          <div role="status" className="flex items-center justify-center gap-2 py-10 text-sm text-white/50"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>
+          <ul aria-hidden className="animate-pulse space-y-1 px-2">
+            {Array.from({ length: 6 }, (_, i) => (
+              <li key={i} className="flex items-center gap-3 rounded-2xl px-3 py-2.5"><span className="h-[3.25rem] w-[3.25rem] shrink-0 rounded-full bg-white/10" /><span className="min-w-0 flex-1 space-y-2"><span className="block h-3.5 w-1/2 rounded bg-white/10" /><span className="block h-3 w-4/5 rounded bg-white/[0.07]" /></span></li>
+            ))}
+          </ul>
         ) : error ? (
           <div className="space-y-3 p-4"><p role="alert" className="text-sm text-red-200">{error}</p><Button size="sm" variant="outline" onClick={onRetry}>Try again</Button></div>
         ) : shown.length ? (
@@ -167,9 +209,11 @@ const ConversationList = ({ conversations, loading, error, activeUsername, myId,
             {shown.map(conversation => {
               const active = activeUsername?.toLowerCase() === conversation.username.toLowerCase();
               const mine = conversation.last_sender_id === myId;
+              const warm = () => warmThread(myId, conversation.user_id);
               return (
                 <li key={conversation.user_id}>
                   <Link to={`/messages/${encodeURIComponent(conversation.username)}`} aria-current={active ? 'page' : undefined}
+                    onPointerEnter={warm} onFocus={warm} onTouchStart={warm}
                     className={cn('flex items-center gap-3 rounded-2xl px-3 py-2.5 transition-colors', active ? 'tg-row-active' : 'hover:bg-white/[0.07]')}>
                     <Person member={conversation} size="h-[3.25rem] w-[3.25rem]" />
                     <div className="min-w-0 flex-1">
@@ -213,111 +257,309 @@ const dayLabel = (iso: string) => {
 };
 
 const clock = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`;
-const signatureOf = (list: ThreadMessage[]) => list.map(message => `${message.id}:${message.read_at ? 1 : 0}`).join(',');
+const signatureOf = (list: ThreadMessage[]) => list.map(message => `${message.id}:${message.read_at ? 1 : 0}:${message.deleted ? 1 : 0}:${(message.reactions ?? []).map(reaction => reaction.user_id.slice(0, 4) + reaction.emoji).join('')}`).join(',');
+
+// Web addresses in a message become links (http and https only).
+const URL_PATTERN = /(https?:\/\/[^\s<>"']+)/g;
+const renderText = (text: string): ReactNode[] =>
+  text.split(URL_PATTERN).map((part, index) => {
+    if (index % 2 === 0) return part;
+    const [, url = part, trailing = ''] = /^(.*?)([.,!?;:)\]]*)$/.exec(part) ?? [];
+    return (
+      <Fragment key={index}>
+        <a href={url} target="_blank" rel="noopener noreferrer nofollow" onClick={event => event.stopPropagation()} className="break-all underline decoration-white/40 underline-offset-2 hover:decoration-white">{url}</a>{trailing}
+      </Fragment>
+    );
+  });
+
+/** One to three emoji and nothing else: shown big, without a bubble (as WhatsApp and Telegram do). */
+const EMOJI_ONLY = /^(?:\p{Extended_Pictographic}[️‍\u{1F3FB}-\u{1F3FF}\p{Extended_Pictographic}]*){1,3}$/u;
+const isEmojiOnly = (text: string) => EMOJI_ONLY.test(text.replace(/\s+/g, ''));
 
 /** A round glass button, as in Telegram's floating controls. */
-const CircleButton = ({ label, onClick, disabled, children, className, type = 'button' }: { label: string; onClick?: () => void; disabled?: boolean; children: React.ReactNode; className?: string; type?: 'button' | 'submit' }) => (
+const CircleButton = ({ label, onClick, disabled, children, className, type = 'button' }: { label: string; onClick?: () => void; disabled?: boolean; children: ReactNode; className?: string; type?: 'button' | 'submit' }) => (
   <button type={type} onClick={onClick} disabled={disabled} aria-label={label} title={label}
     className={cn('tg-pill flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white/85 transition-all hover:text-white active:scale-95 disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lune-300', className)}>
     {children}
   </button>
 );
 
-/** Right pane: one conversation. Polls for new messages while the tab is visible. */
-const Thread = ({ peer, myId, onActivity }: { peer: PublicProfile; myId: string; onActivity: () => void }) => {
-  const { call, busy: callBusy, startCall } = useCall();
+const REPLY_SWIPE = 52;
+const HOLD_MS = 420;
+
+interface RowProps {
+  message: ThreadMessage; mine: boolean; startsRun: boolean; endsRun: boolean;
+  canReply: boolean; canReact: boolean; canDelete: boolean; myId: string; peerName: string; flash: boolean;
+  onReply: (message: ThreadMessage) => void; onJump: (id: string) => void;
+  onReact: (message: ThreadMessage, emoji: string) => void; onDelete: (message: ThreadMessage) => void; onOpenImage: (message: ThreadMessage) => void;
+}
+
+/**
+ * One message. On a touch screen, swipe it to the right to reply and hold it for its menu (reactions,
+ * reply, copy, delete); with a mouse, use the buttons that appear beside it. Tapping a quote jumps to
+ * the message it answers.
+ */
+const MessageRow = memo(({ message, mine, startsRun, endsRun, canReply: replyAllowed, canReact: reactAllowed, canDelete, myId, peerName, flash, onReply, onJump, onReact, onDelete, onOpenImage }: RowProps) => {
+  const [offset, setOffset] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [armed, setArmed] = useState(false);
+  const hold = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const drag = useRef({ id: -1, x: 0, y: 0, active: false, dx: 0, armed: false });
+  const stopHold = () => { if (hold.current) { clearTimeout(hold.current); hold.current = null; } };
+  useEffect(() => stopHold, []);
+
+  // A deleted message is just a note that it was there: no reply, reactions or menu.
+  const deleted = !!message.deleted;
+  const canReply = replyAllowed && !deleted;
+  const canReact = reactAllowed && !deleted;
+  const mayDelete = canDelete && mine && !deleted;
+  const voice = !deleted && message.kind === 'voice' && !!message.voice_id;
+  const picture = !deleted && message.kind === 'image' && !!message.image_id;
+  const copyable = !deleted && !voice && !!message.content;
+  const hasMenu = canReply || canReact || mayDelete || copyable;
+  const bare = !deleted && !voice && !picture && !message.reply_to_id && isEmojiOnly(message.content);
+  const hasQuote = !deleted && !!message.reply_to_id && (message.reply_voice || message.reply_image || message.reply_deleted || message.reply_content != null);
+  const time = format(new Date(message.created_at), 'p');
+  const meta = (
+    <span className={cn('flex items-center gap-1 text-[11px] leading-none', bare ? 'text-white/60' : mine ? 'text-white/75' : 'text-white/45')} title={new Date(message.created_at).toLocaleString()}>
+      {time}{mine && !deleted && <Ticks read={!!message.read_at} />}
+    </span>
+  );
+
+  // Reactions, grouped by emoji, shown as small chips on the bottom edge of the bubble.
+  const grouped = useMemo(() => {
+    const map = new Map<string, { count: number; mine: boolean }>();
+    for (const reaction of message.reactions ?? []) {
+      const entry = map.get(reaction.emoji) ?? { count: 0, mine: false };
+      entry.count += 1;
+      if (reaction.user_id === myId) entry.mine = true;
+      map.set(reaction.emoji, entry);
+    }
+    return [...map.entries()];
+  }, [message.reactions, myId]);
+  const chips = !deleted && grouped.length > 0 && (
+    <div className={cn('absolute -bottom-4 z-10 flex gap-1', mine ? 'right-2' : 'left-2')}>
+      {grouped.map(([emoji, info]) => (
+        <button key={emoji} type="button" disabled={!canReact} onClick={() => onReact(message, emoji)} aria-label={`${emoji} ${info.count}${info.mine ? ', yours. Tap to remove' : ''}`}
+          className={cn('flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[13px] leading-none shadow-md backdrop-blur', info.mine ? 'border-lune-300/70 bg-lune-700/90' : 'border-white/15 bg-[#241c3b]/95')}>
+          <span>{emoji}</span>{info.count > 1 && <span className="text-[11px] font-medium text-white/80">{info.count}</span>}
+        </button>
+      ))}
+    </div>
+  );
+
+  const down = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!hasMenu || event.pointerType === 'mouse') return;
+    drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, active: false, dx: 0, armed: false };
+    // Holding a message opens its menu, like on WhatsApp.
+    stopHold();
+    hold.current = setTimeout(() => { hold.current = null; drag.current.id = -1; navigator.vibrate?.(15); setMenu(true); }, HOLD_MS);
+  };
+  const move = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const state = drag.current;
+    if (state.id !== event.pointerId) return;
+    const dx = event.clientX - state.x;
+    const dy = event.clientY - state.y;
+    if (!state.active) {
+      if (Math.abs(dx) > 8 || Math.abs(dy) > 8) stopHold();
+      // Clearly vertical: the member is scrolling, leave it to the browser.
+      if (Math.abs(dy) > 14 && Math.abs(dy) > Math.abs(dx) * 1.4) { state.id = -1; return; }
+      if (dx <= 8 || dx < Math.abs(dy) * 0.9) return;
+      if (!canReply) { state.id = -1; return; }
+      state.active = true;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setDragging(true);
+    }
+    state.dx = Math.max(0, Math.min(dx, 110));
+    const nowArmed = state.dx >= REPLY_SWIPE;
+    if (nowArmed !== state.armed) { state.armed = nowArmed; setArmed(nowArmed); if (nowArmed) navigator.vibrate?.(10); }
+    setOffset(state.dx * 0.85);
+  };
+  const up = (event: ReactPointerEvent<HTMLDivElement>) => {
+    stopHold();
+    const state = drag.current;
+    if (state.id !== event.pointerId) return;
+    const triggered = state.active && state.dx >= REPLY_SWIPE && event.type !== 'pointercancel';
+    state.id = -1;
+    setDragging(false);
+    setArmed(false);
+    setOffset(0);
+    if (triggered) onReply(message);
+  };
+
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(message.content); setCopied(true); setTimeout(() => setCopied(false), 1400); } catch { /* clipboard unavailable */ }
+  };
+
+  const actions = hasMenu && (
+    <div className={cn('flex shrink-0 items-center gap-0.5 self-center [@media(pointer:coarse)]:hidden opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100', mine ? 'order-first' : 'order-last')}>
+      {canReply && <button type="button" onClick={() => onReply(message)} aria-label="Reply" title="Reply" className="tg-pill flex h-8 w-8 items-center justify-center rounded-full text-white/80 hover:text-white"><CornerUpLeft size={15} /></button>}
+      <button type="button" onClick={() => setMenu(true)} aria-label="More: react, copy, delete" title="More" className="tg-pill flex h-8 w-8 items-center justify-center rounded-full text-white/80 hover:text-white"><MoreHorizontal size={16} /></button>
+    </div>
+  );
+
+  const quote = hasQuote && (
+    <button type="button" onClick={() => onJump(message.reply_to_id as string)}
+      className={cn('mb-1 block w-full min-w-[9rem] rounded-lg border-l-[3px] px-2 py-1 text-left transition-colors', mine ? 'border-white/85 bg-black/15 hover:bg-black/25' : 'border-lune-300 bg-white/[0.06] hover:bg-white/10')}>
+      <span className={cn('block truncate text-[13px] font-semibold leading-tight', mine ? 'text-white' : 'text-lune-300')}>{message.reply_sender_id === myId ? 'You' : peerName}</span>
+      <span className="line-clamp-2 block text-[13px] leading-snug text-white/75">{message.reply_deleted ? '🚫 Deleted message' : message.reply_voice ? '🎤 Voice message' : message.reply_image ? `📷 ${message.reply_content || 'Photo'}` : message.reply_content}</span>
+    </button>
+  );
+
+  const bubbleShape = cn('tg-bubble relative min-w-0 rounded-[18px]', mine ? 'tg-out' : 'tg-in',
+    endsRun ? (mine ? 'tg-tail-out rounded-br-[4px]' : 'tg-tail-in rounded-bl-[4px]') : (mine ? 'rounded-br-[6px]' : 'rounded-bl-[6px]'),
+    !startsRun && (mine ? 'rounded-tr-[6px]' : 'rounded-tl-[6px]'));
+
+  return (
+    <div id={`msg-${message.id}`} className={cn('tg-row group/row relative flex px-2.5', mine ? 'justify-end' : 'justify-start', startsRun ? 'mt-2.5' : 'mt-[3px]', grouped.length > 0 && !deleted && 'mb-4', flash && 'tg-flash')}
+      style={{ touchAction: 'pan-y' }} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
+      {canReply && (
+        <span aria-hidden className={cn('pointer-events-none absolute left-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-white transition-colors', armed ? 'bg-lune-500' : 'bg-white/15')}
+          style={{ opacity: Math.min(1, offset / 36), transform: `translateY(-50%) scale(${0.6 + 0.4 * Math.min(1, offset / 44) + (armed ? 0.15 : 0)})` }}>
+          <CornerUpLeft size={16} />
+        </span>
+      )}
+      <div className={cn('flex max-w-[86%] items-end gap-1.5 sm:max-w-[72%]', mine ? 'flex-row' : 'flex-row')} style={{ transform: `translateX(${offset}px)`, transition: dragging ? 'none' : 'transform 0.2s ease-out' }}>
+        {mine && actions}
+        {deleted ? (
+          <div className={cn(bubbleShape, 'px-3 pb-[7px] pt-[7px] text-[14.5px] italic leading-[1.35] text-white/55')}>
+            🚫 This message was deleted
+            <span aria-hidden className="inline-block h-0 w-[3.4rem]" />
+            <span className="absolute bottom-[5px] right-2.5">{meta}</span>
+          </div>
+        ) : bare ? (
+          <div className="relative px-1">
+            <div className="text-[2.7rem] leading-[1.15]">{message.content}</div>
+            <div className={cn('flex', mine ? 'justify-end' : 'justify-start')}>{meta}</div>
+            {chips}
+          </div>
+        ) : (
+          <div className={cn(bubbleShape, voice ? 'px-3 pb-1.5 pt-2.5' : picture ? 'p-1' : 'selectable whitespace-pre-wrap break-words px-3 pb-[7px] pt-[7px] text-[15.5px] leading-[1.35]')}>
+            {quote}
+            {voice ? (
+              <>
+                <VoiceBubble voiceId={message.voice_id as string} durationMs={message.duration_ms ?? 1000} peaks={message.peaks ?? null} mine={mine} />
+                <div className="mt-1 flex justify-end">{meta}</div>
+              </>
+            ) : picture ? (
+              <>
+                <button type="button" onClick={() => onOpenImage(message)} aria-label="Open picture" className="relative block overflow-hidden rounded-[14px]">
+                  <img src={`/api/message-image/${message.image_id}`} alt={message.content || 'Picture'} loading="lazy" className="block max-h-80 w-full min-w-[10rem] max-w-[17rem] bg-black/20 object-cover" />
+                  {!message.content && <span className="absolute bottom-1.5 right-1.5 rounded-full bg-black/55 px-2 py-1">{meta}</span>}
+                </button>
+                {message.content && (
+                  <p className="selectable whitespace-pre-wrap break-words px-2 pb-1 pt-1.5 text-[15.5px] leading-[1.35]">
+                    {renderText(message.content)}
+                    <span aria-hidden className={cn('inline-block h-0', mine ? 'w-[4.6rem]' : 'w-[3.4rem]')} />
+                    <span className="absolute bottom-[7px] right-3">{meta}</span>
+                  </p>
+                )}
+              </>
+            ) : (
+              <>
+                {renderText(message.content)}
+                {/* Reserves room at the end of the last line; the time sits in it, bottom right. */}
+                <span aria-hidden className={cn('inline-block h-0', mine ? 'w-[4.6rem]' : 'w-[3.4rem]')} />
+                <span className="absolute bottom-[5px] right-2.5">{meta}</span>
+              </>
+            )}
+            {chips}
+          </div>
+        )}
+        {!mine && actions}
+      </div>
+      {menu && (
+        <>
+          <div className="fixed inset-0 z-40" onPointerDown={() => setMenu(false)} />
+          <div role="menu" className={cn('absolute bottom-full z-50 mb-1 flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#1b1530]/95 text-sm text-white shadow-xl backdrop-blur-xl', mine ? 'right-3' : 'left-3')}>
+            {canReact && (
+              <div className="flex gap-0.5 px-2 py-1.5" role="group" aria-label="React">
+                {REACTIONS.map(emoji => {
+                  const picked = message.reactions?.some(reaction => reaction.user_id === myId && reaction.emoji === emoji);
+                  return <button key={emoji} type="button" role="menuitem" aria-label={`React ${emoji}`} onClick={() => { setMenu(false); onReact(message, emoji); }} className={cn('flex h-9 w-9 items-center justify-center rounded-full text-[22px] transition-transform active:scale-90', picked ? 'bg-white/20' : 'hover:bg-white/10')}>{emoji}</button>;
+                })}
+              </div>
+            )}
+            <div className="flex border-t border-white/10 first:border-t-0">
+              {canReply && <button role="menuitem" type="button" onClick={() => { setMenu(false); onReply(message); }} className="flex flex-1 items-center justify-center gap-2 px-4 py-2.5 active:bg-white/10"><CornerUpLeft size={15} />Reply</button>}
+              {copyable && <button role="menuitem" type="button" onClick={() => { setMenu(false); void copy(); }} className="flex flex-1 items-center justify-center gap-2 px-4 py-2.5 active:bg-white/10"><Copy size={14} />Copy</button>}
+              {mayDelete && <button role="menuitem" type="button" onClick={() => { setMenu(false); onDelete(message); }} className="flex flex-1 items-center justify-center gap-2 px-4 py-2.5 text-red-300 active:bg-white/10"><Trash2 size={14} />Delete</button>}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+});
+MessageRow.displayName = 'MessageRow';
+
+/** Placeholder bubbles while a conversation loads for the first time. */
+const ThreadSkeleton = () => (
+  <div aria-hidden className="animate-pulse space-y-3 px-5 py-4">
+    {[['w-44', false], ['w-64', true], ['w-36', false], ['w-56', true], ['w-28', false], ['w-48', true]].map(([width, mine], index) => (
+      <div key={index} className={cn('flex', mine ? 'justify-end' : 'justify-start')}><div className={cn('h-10 rounded-[18px]', width as string, mine ? 'bg-lune-500/35' : 'bg-white/[0.09]')} /></div>
+    ))}
+  </div>
+);
+
+interface ComposerProps {
+  peerId: string; myId: string; name: string; features: Features;
+  replyTo: ThreadMessage | null; onCancelReply: () => void; onSent: (message: ThreadMessage) => void;
+}
+
+/**
+ * The message box. It owns what you are typing and the voice recorder, so each keystroke (and each
+ * tick of a recording) re-renders only this box, never the whole conversation.
+ */
+const Composer = memo(({ peerId, myId, name, features, replyTo, onCancelReply, onSent }: ComposerProps) => {
   const recorder = useVoiceRecorder();
-  const unreadTotal = useUnreadMessages();
-  const [member, setMember] = useState<ThreadMember | null>(null);
-  const [messages, setMessages] = useState<ThreadMessage[]>([]);
-  const [ready, setReady] = useState(false);
-  const [loadError, setLoadError] = useState('');
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState('');
   const [emojiOpen, setEmojiOpen] = useState(false);
-  const [atBottom, setAtBottom] = useState(true);
-  const [newBelow, setNewBelow] = useState(0);
-  const scroller = useRef<HTMLDivElement>(null);
-  const composer = useRef<HTMLTextAreaElement>(null);
-  const stick = useRef(true);
+  const box = useRef<HTMLTextAreaElement>(null);
   const sendingRef = useRef(false);
-  const lastSeen = useRef('');
-  const knownCount = useRef(0);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [picture, setPicture] = useState<File | null>(null);
+  const pictureUrl = useMemo(() => (picture ? URL.createObjectURL(picture) : ''), [picture]);
+  useEffect(() => () => { if (pictureUrl) URL.revokeObjectURL(pictureUrl); }, [pictureUrl]);
+  const replyId = replyTo && features.replies ? replyTo.id : null;
 
-  const load = useCallback(async () => {
-    try {
-      const data = await api<{ member: ThreadMember; messages: ThreadMessage[] }>(`/api/messages/${peer.id}`);
-      setMember(data.member);
-      // Only replace the list when something changed, so polling never jolts the scroll position.
-      const signature = signatureOf(data.messages);
-      if (signature !== lastSeen.current) {
-        lastSeen.current = signature;
-        const arrived = data.messages.slice(knownCount.current).filter(message => message.sender_id !== myId).length;
-        if (arrived > 0 && knownCount.current > 0 && !stick.current) setNewBelow(count => count + arrived);
-        knownCount.current = data.messages.length;
-        setMessages(data.messages);
-        if (data.messages.some(message => message.sender_id !== myId)) { announceMessagesChanged(); onActivity(); }
-      }
-      setLoadError('');
-    } catch (cause) {
-      setLoadError(cause instanceof ApiError && cause.status === 403 ? cause.message : 'This conversation could not be loaded. Check your connection.');
-    } finally {
-      setReady(true);
-    }
-  }, [peer.id, myId, onActivity]);
+  // Starting a reply puts the cursor in the box.
+  useEffect(() => { if (replyTo) { setEmojiOpen(false); box.current?.focus(); } }, [replyTo]);
 
+  // The box grows with what you type, up to about five lines. Done in a frame callback so typing is never blocked.
   useEffect(() => {
-    void load();
-    const timer = setInterval(() => { if (document.visibilityState === 'visible') void load(); }, 4000);
-    return () => clearInterval(timer);
-  }, [load]);
-
-  useEffect(() => {
-    const box = scroller.current;
-    if (box && stick.current) box.scrollTop = box.scrollHeight;
-  }, [messages]);
-
-  // The message box grows with what you type, up to about five lines.
-  useEffect(() => {
-    const box = composer.current;
-    if (!box) return;
-    box.style.height = 'auto';
-    box.style.height = `${Math.min(box.scrollHeight, 132)}px`;
-  }, [draft]);
-
-  const jumpToLatest = () => {
-    const box = scroller.current;
-    if (!box) return;
-    stick.current = true;
-    box.scrollTo({ top: box.scrollHeight, behavior: 'smooth' });
-    setNewBelow(0);
-  };
-
-  const appendSent = (sent: ThreadMessage) => {
-    stick.current = true;
-    setMessages(previous => {
-      const next = previous.some(message => message.id === sent.id) ? previous : [...previous, sent];
-      lastSeen.current = signatureOf(next);
-      knownCount.current = next.length;
-      return next;
+    const frame = requestAnimationFrame(() => {
+      const el = box.current;
+      if (!el) return;
+      el.style.height = 'auto';
+      el.style.height = `${Math.min(el.scrollHeight, 132)}px`;
     });
-    announceMessagesChanged();
-    onActivity();
-  };
+    return () => cancelAnimationFrame(frame);
+  }, [draft]);
 
   const send = async (event?: FormEvent) => {
     event?.preventDefault();
     const content = draft.trim();
-    if (!content || sendingRef.current) return;
+    if ((!content && !picture) || sendingRef.current) return;
     sendingRef.current = true;
     setSending(true);
     setSendError('');
     setEmojiOpen(false);
     try {
-      appendSent(await api<ThreadMessage>(`/api/messages/${peer.id}`, { method: 'POST', body: { content } }));
+      if (picture) {
+        // A picture goes with whatever is typed as its caption.
+        onSent(await uploadChatImage<ThreadMessage>(peerId, await prepareImage(picture), content, replyId));
+        setPicture(null);
+      } else {
+        onSent(await api<ThreadMessage>(`/api/messages/${peerId}`, { method: 'POST', body: { content, ...(replyId ? { reply_to: replyId } : {}) } }));
+      }
       setDraft('');
-      composer.current?.focus();
+      onCancelReply();
+      box.current?.focus();
     } catch (cause) {
       setSendError(cause instanceof Error ? cause.message : 'Your message could not be sent. Please try again.');
     } finally {
@@ -333,7 +575,8 @@ const Thread = ({ peer, myId, onActivity }: { peer: PublicProfile; myId: string;
     setSending(true);
     setSendError('');
     try {
-      appendSent(await uploadVoice<ThreadMessage>(peer.id, recording.blob, recording.durationMs, recording.peaks));
+      onSent(await uploadVoice<ThreadMessage>(peerId, recording.blob, recording.durationMs, recording.peaks, replyId));
+      onCancelReply();
     } catch (cause) {
       setSendError(cause instanceof Error ? cause.message : 'Your voice message could not be sent. Please try again.');
     } finally {
@@ -350,40 +593,283 @@ const Thread = ({ peer, myId, onActivity }: { peer: PublicProfile; myId: string;
   };
 
   const addEmoji = (emoji: string) => {
-    const box = composer.current;
-    const from = box?.selectionStart ?? draft.length;
-    const to = box?.selectionEnd ?? draft.length;
-    const next = (draft.slice(0, from) + emoji + draft.slice(to)).slice(0, MAX_LENGTH);
-    setDraft(next);
-    requestAnimationFrame(() => { box?.focus(); box?.setSelectionRange(from + emoji.length, from + emoji.length); });
+    const el = box.current;
+    const from = el?.selectionStart ?? draft.length;
+    const to = el?.selectionEnd ?? draft.length;
+    setDraft((draft.slice(0, from) + emoji + draft.slice(to)).slice(0, MAX_LENGTH));
+    requestAnimationFrame(() => { el?.focus(); el?.setSelectionRange(from + emoji.length, from + emoji.length); });
+  };
+
+  const pickPicture = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!PICTURE_TYPES.includes(file.type)) { setSendError('Choose a JPG, PNG, WebP or GIF picture.'); return; }
+    setSendError('');
+    setPicture(file);
+    box.current?.focus();
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); }
+    if (event.key === 'Escape') { if (replyTo) onCancelReply(); else setEmojiOpen(false); return; }
+    // Phone keyboards report Enter as a new line while composing; only a real Enter (not mid-word) sends.
+    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) { event.preventDefault(); void send(); }
   };
+
+  const problem = sendError || recorder.error;
+
+  return (
+    <form onSubmit={send} className="relative px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1.5">
+      {problem && <p role="alert" className="mb-2 rounded-2xl border border-red-400/25 bg-red-500/20 px-3.5 py-2 text-sm text-red-100 backdrop-blur">{problem}</p>}
+      {replyTo && features.replies && !recorder.recording && (
+        <div className="tg-pill mb-2 flex items-center gap-3 rounded-2xl py-2 pl-3 pr-2">
+          <CornerUpLeft className="h-4 w-4 shrink-0 text-lune-300" aria-hidden />
+          <div className="min-w-0 flex-1 border-l-[3px] border-lune-300 pl-2.5">
+            <p className="truncate text-[13px] font-semibold text-lune-300">Replying to {replyTo.sender_id === myId ? 'yourself' : name}</p>
+            <p className="truncate text-[13px] text-white/70">{replyTo.kind === 'voice' ? '🎤 Voice message' : replyTo.kind === 'image' ? `📷 ${replyTo.content || 'Photo'}` : replyTo.content}</p>
+          </div>
+          <button type="button" onClick={onCancelReply} aria-label="Cancel reply" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white"><X size={17} /></button>
+        </div>
+      )}
+      {picture && !recorder.recording && (
+        <div className="tg-pill mb-2 flex items-center gap-3 rounded-2xl p-2">
+          <img src={pictureUrl} alt="Picture to send" className="h-16 w-16 shrink-0 rounded-xl object-cover" />
+          <p className="min-w-0 flex-1 text-[13px] text-white/70">Add a caption below, then send.</p>
+          <button type="button" onClick={() => setPicture(null)} disabled={sending} aria-label="Remove picture" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white"><X size={17} /></button>
+        </div>
+      )}
+      {emojiOpen && !recorder.recording && (
+        <div role="dialog" aria-label="Emoji" className="tg-pill absolute bottom-full left-3 right-3 z-30 mb-2 grid max-h-44 grid-cols-9 gap-0.5 overflow-y-auto rounded-3xl p-2 sm:right-auto sm:w-[22rem]">
+          {EMOJIS.map(emoji => <button key={emoji} type="button" onClick={() => addEmoji(emoji)} className="flex h-9 items-center justify-center rounded-xl text-xl transition-colors hover:bg-white/10" aria-label={`Insert ${emoji}`}>{emoji}</button>)}
+        </div>
+      )}
+      {recorder.recording ? (
+        <div className="flex items-center gap-2">
+          <CircleButton label="Cancel recording" onClick={recorder.cancel} className="text-red-300 hover:text-red-200"><Trash2 size={19} /></CircleButton>
+          <div className="tg-pill flex h-11 min-w-0 flex-1 items-center gap-3 rounded-full px-4">
+            <span role="timer" aria-label="Recording time" className="flex shrink-0 items-center gap-2 text-[15px] font-medium tabular-nums"><span aria-hidden className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-500" />{clock(recorder.elapsed)}</span>
+            <div aria-hidden className="flex h-7 min-w-0 flex-1 items-center justify-end gap-[2px] overflow-hidden">
+              {recorder.live.map((bar, index) => <span key={index} style={{ height: `${Math.max(14, bar)}%` }} className="w-[3px] shrink-0 rounded-full bg-lune-300" />)}
+            </div>
+          </div>
+          <CircleButton label="Send voice message" onClick={() => void recorder.stop().then(sendVoice)} disabled={sending} className="bg-lune-500 text-white hover:bg-lune-600">
+            {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <SendHorizontal size={19} />}
+          </CircleButton>
+        </div>
+      ) : (
+        <div className="flex items-end gap-2">
+          <CircleButton label="Emoji" onClick={() => setEmojiOpen(open => !open)} className={emojiOpen ? 'text-lune-300' : undefined}><Smile size={21} /></CircleButton>
+          <div className="tg-pill flex min-h-[2.75rem] min-w-0 flex-1 items-center rounded-[1.4rem] px-4 transition-shadow focus-within:shadow-[0_0_0_2px_rgba(192,132,252,0.45)]">
+            {/* 16px: smaller text makes iPhones zoom the whole page when the box is tapped. */}
+            <textarea
+              ref={box} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={onKeyDown}
+              maxLength={MAX_LENGTH} rows={1} disabled={sending} enterKeyHint="send" autoComplete="off" autoCorrect="on" autoCapitalize="sentences" spellCheck
+              aria-label={`Message ${name}`} placeholder={replyTo ? 'Write your reply' : 'Message'}
+              className="max-h-[132px] min-h-[2.25rem] w-full resize-none bg-transparent py-[9px] text-[16px] leading-snug text-white outline-none placeholder:text-white/45 disabled:opacity-60"
+            />
+            {features.images && (
+              <>
+                <input ref={fileInput} type="file" accept={PICTURE_TYPES.join(',')} onChange={pickPicture} className="hidden" aria-label="Choose a picture" />
+                <button type="button" onClick={() => fileInput.current?.click()} disabled={sending} aria-label="Send a picture" title="Send a picture" className="-mr-2 ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/65 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-40"><ImagePlus size={20} /></button>
+              </>
+            )}
+          </div>
+          {draft.trim() || picture ? (
+            <CircleButton type="submit" label="Send message" disabled={sending} className="bg-lune-500 text-white hover:bg-lune-600">
+              {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <SendHorizontal size={19} />}
+            </CircleButton>
+          ) : features.voice ? (
+            <CircleButton label="Record a voice message" onClick={startRecording} disabled={sending}>
+              {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic size={21} />}
+            </CircleButton>
+          ) : (
+            <CircleButton type="submit" label="Send message" disabled className="bg-lune-500/60 text-white"><SendHorizontal size={19} /></CircleButton>
+          )}
+        </div>
+      )}
+      {draft.length > MAX_LENGTH - 200 && <p className="mt-1 text-right text-xs tabular-nums text-white/50">{draft.length}/{MAX_LENGTH}</p>}
+    </form>
+  );
+});
+Composer.displayName = 'Composer';
+
+/** Right pane: one conversation. Polls for new messages while the tab is visible. */
+const Thread = ({ peer, myId, unreadElsewhere, onActivity }: { peer: PublicProfile; myId: string; unreadElsewhere: number; onActivity: () => void }) => {
+  const { call, busy: callBusy, startCall } = useCall();
+  const cached = threadCache.get(cacheKey(myId, peer.id))?.data;
+  const [member, setMember] = useState<ThreadMember | null>(cached?.member ?? null);
+  const [messages, setMessages] = useState<ThreadMessage[]>(cached?.messages ?? []);
+  const [features, setFeatures] = useState<Features>(cached?.features ?? { voice: true, replies: false });
+  const [ready, setReady] = useState(!!cached);
+  const [loadError, setLoadError] = useState('');
+  const [atBottom, setAtBottom] = useState(true);
+  const [newBelow, setNewBelow] = useState(0);
+  const [replyTo, setReplyTo] = useState<ThreadMessage | null>(null);
+  const [flashId, setFlashId] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<Confirm | null>(null);
+  const [viewer, setViewer] = useState<string | null>(null);
+  const [divider, setDivider] = useState<{ id: string; count: number } | null>(null);
+  const scroller = useRef<HTMLDivElement>(null);
+  const stick = useRef(true);
+  const lastSeen = useRef(cached ? signatureOf(cached.messages) : '');
+  const knownCount = useRef(cached?.messages.length ?? 0);
+  const dividerSet = useRef(false);
+
+  const load = useCallback(async () => {
+    try {
+      const data = await api<ThreadData>(`/api/messages/${peer.id}`);
+      remember(myId, peer.id, data);
+      setMember(data.member);
+      setFeatures(data.features);
+      // Only replace the list when something changed, so polling never jolts the scroll position.
+      const signature = signatureOf(data.messages);
+      if (signature !== lastSeen.current) {
+        lastSeen.current = signature;
+        const arrived = data.messages.slice(knownCount.current).filter(message => message.sender_id !== myId).length;
+        if (arrived > 0 && knownCount.current > 0 && !stick.current) setNewBelow(count => count + arrived);
+        knownCount.current = data.messages.length;
+        setMessages(data.messages);
+      }
+      if (data.unreadIds.length) {
+        // The first time you open a conversation with unread messages, mark where they start.
+        if (!dividerSet.current) {
+          dividerSet.current = true;
+          const first = data.messages.find(message => data.unreadIds.includes(message.id));
+          if (first) setDivider({ id: first.id, count: data.unreadIds.length });
+        }
+        announceMessagesChanged();
+        onActivity();
+      }
+      setLoadError('');
+    } catch (cause) {
+      setLoadError(cause instanceof ApiError && cause.status === 403 ? cause.message : 'This conversation could not be loaded. Check your connection.');
+    } finally {
+      setReady(true);
+    }
+  }, [peer.id, myId, onActivity]);
+
+  useEffect(() => {
+    void load();
+    const timer = setInterval(() => { if (document.visibilityState === 'visible') void load(); }, 4000);
+    return () => clearInterval(timer);
+  }, [load]);
+
+  // When the keyboard opens or closes the visible area changes size: stay on the newest message if you were there.
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const keepBottom = () => {
+      const box = scroller.current;
+      if (box && stick.current) requestAnimationFrame(() => { box.scrollTop = box.scrollHeight; });
+    };
+    viewport.addEventListener('resize', keepBottom);
+    return () => viewport.removeEventListener('resize', keepBottom);
+  }, []);
+
+  // Scroll to the newest message before the screen is painted, so the conversation never visibly jumps.
+  useLayoutEffect(() => {
+    const box = scroller.current;
+    if (box && stick.current) box.scrollTop = box.scrollHeight;
+  }, [messages, ready]);
+
+  const jumpToLatest = () => {
+    const box = scroller.current;
+    if (!box) return;
+    stick.current = true;
+    box.scrollTo({ top: box.scrollHeight, behavior: 'smooth' });
+    setNewBelow(0);
+  };
+
+  const startReply = useCallback((message: ThreadMessage) => {
+    setReplyTo(message);
+  }, []);
+
+  const cancelReply = useCallback(() => setReplyTo(null), []);
+
+  const jumpTo = useCallback((id: string) => {
+    const target = document.getElementById(`msg-${id}`);
+    if (!target) return;
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    setFlashId(id);
+    setTimeout(() => setFlashId(current => (current === id ? null : current)), 1600);
+  }, []);
+
+  const appendSent = (sent: ThreadMessage) => {
+    stick.current = true;
+    setMessages(previous => {
+      const next = previous.some(message => message.id === sent.id) ? previous : [...previous, sent];
+      lastSeen.current = signatureOf(next);
+      knownCount.current = next.length;
+      return next;
+    });
+    announceMessagesChanged();
+    onActivity();
+  };
+
+  // Reactions and deletes show at once and are then confirmed by the server (or put back if it refuses).
+  const patchMessage = useCallback((id: string, change: (message: ThreadMessage) => ThreadMessage) => {
+    setMessages(previous => {
+      const next = previous.map(message => message.id === id ? change(message) : message);
+      lastSeen.current = signatureOf(next);
+      return next;
+    });
+  }, []);
+
+  const react = useCallback(async (message: ThreadMessage, emoji: string) => {
+    const mineBefore = message.reactions?.find(reaction => reaction.user_id === myId)?.emoji;
+    const removing = mineBefore === emoji;
+    patchMessage(message.id, current => ({
+      ...current,
+      reactions: [...(current.reactions ?? []).filter(reaction => reaction.user_id !== myId), ...(removing ? [] : [{ emoji, user_id: myId }])],
+    }));
+    try {
+      const result = await api<{ reactions: { emoji: string; user_id: string }[] }>(`/api/message/${message.id}/react`, { method: 'POST', body: { emoji } });
+      patchMessage(message.id, current => ({ ...current, reactions: result.reactions }));
+    } catch (cause) {
+      patchMessage(message.id, current => ({ ...current, reactions: message.reactions ?? [] }));
+      showError(cause instanceof Error ? cause.message : 'Your reaction could not be saved. Please try again.');
+    }
+  }, [myId, patchMessage]);
+
+  const askDelete = useCallback((message: ThreadMessage) => setConfirm({
+    title: 'Delete this message?',
+    description: 'It is deleted for everyone in this chat. This can’t be undone.',
+    action: 'Delete',
+    run: async () => {
+      await api(`/api/message/${message.id}`, { method: 'DELETE' });
+      patchMessage(message.id, current => ({ ...current, deleted: true, content: '', image_id: null, reactions: [] }));
+      announceMessagesChanged();
+      onActivity();
+    },
+  }), [patchMessage, onActivity]);
+
+  const openImage = useCallback((message: ThreadMessage) => { if (message.image_id) setViewer(`/api/message-image/${message.image_id}`); }, []);
 
   const blocked = !!member?.blocked;
   const shown = member ?? { username: peer.username, display_name: peer.display_name ?? '', avatar_url: peer.avatar_url };
   const name = displayNameOf(shown);
   const canCall = !blocked && !call && !callBusy;
   const callPeer = { id: peer.id, username: peer.username, display_name: shown.display_name, avatar_url: shown.avatar_url };
-  const problem = sendError || recorder.error;
+  const canReply = features.replies && !blocked;
 
   // Group the messages by day, so each day's date pill can stay at the top while that day scrolls.
-  const days: { key: string; label: string; items: { message: ThreadMessage; index: number }[] }[] = [];
-  messages.forEach((message, index) => {
-    const key = format(new Date(message.created_at), 'yyyy-MM-dd');
-    const last = days[days.length - 1];
-    if (last && last.key === key) last.items.push({ message, index });
-    else days.push({ key, label: dayLabel(message.created_at), items: [{ message, index }] });
-  });
+  const days = useMemo(() => {
+    const groups: { key: string; label: string; items: { message: ThreadMessage; index: number }[] }[] = [];
+    messages.forEach((message, index) => {
+      const key = format(new Date(message.created_at), 'yyyy-MM-dd');
+      const last = groups[groups.length - 1];
+      if (last && last.key === key) last.items.push({ message, index });
+      else groups.push({ key, label: dayLabel(message.created_at), items: [{ message, index }] });
+    });
+    return groups;
+  }, [messages]);
 
   return (
     <div className="relative z-10 flex min-h-0 flex-1 flex-col">
       <header className="flex items-center gap-2 px-3 pb-2 pt-3">
         <Link to="/messages" aria-label="Back to conversations" className="tg-pill flex h-11 shrink-0 items-center gap-1 rounded-full pl-2.5 pr-3.5 text-white md:hidden">
           <ArrowLeft size={20} />
-          {unreadTotal > 0 && <span className="rounded-full bg-lune-500 px-1.5 text-[12px] font-semibold leading-5">{unreadTotal > 999 ? '999+' : unreadTotal}</span>}
+          {unreadElsewhere > 0 && <span className="rounded-full bg-lune-500 px-1.5 text-[12px] font-semibold leading-5">{unreadElsewhere > 999 ? '999+' : unreadElsewhere}</span>}
         </Link>
         <Link to={`/profile/${encodeURIComponent(peer.username)}`} className="tg-pill flex h-11 min-w-0 flex-1 flex-col items-center justify-center rounded-full px-4 text-center transition-colors hover:bg-white/[0.08]">
           <span className="max-w-full truncate text-[15px] font-semibold leading-tight">{name} <VerifiedBadge username={peer.username} /></span>
@@ -406,7 +892,7 @@ const Thread = ({ peer, myId, onActivity }: { peer: PublicProfile; myId: string;
             if (near) setNewBelow(0);
           }}
           className="tg-fade h-full overflow-y-auto overscroll-contain px-3 py-3 sm:px-5" aria-live="polite" aria-label={`Conversation with ${name}`}>
-          {!ready && <div role="status" className="flex items-center justify-center gap-2 py-10 text-sm text-white/60"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>}
+          {!ready && <ThreadSkeleton />}
           {ready && loadError && !messages.length && <p role="alert" className="py-10 text-center text-sm text-red-200">{loadError}</p>}
           {ready && !loadError && !messages.length && (
             <div className="flex flex-col items-center gap-3 py-14 text-center">
@@ -417,41 +903,19 @@ const Thread = ({ peer, myId, onActivity }: { peer: PublicProfile; myId: string;
           {days.map(day => (
             <section key={day.key} aria-label={day.label}>
               <div className="sticky top-1 z-10 flex justify-center py-1.5"><span className="tg-pill rounded-full px-3 py-1 text-[12px] font-medium text-white/85">{day.label}</span></div>
-              {day.items.map(({ message, index }) => {
-                const mine = message.sender_id === myId;
-                const startsRun = !sameRun(messages[index - 1], message);
-                const endsRun = !sameRun(message, messages[index + 1]);
-                const voice = message.kind === 'voice' && message.voice_id;
-                const time = format(new Date(message.created_at), 'p');
-                const meta = (
-                  <span className={cn('flex items-center gap-1 text-[11px] leading-none', mine ? 'text-white/75' : 'text-white/45')} title={new Date(message.created_at).toLocaleString()}>
-                    {time}{mine && <Ticks read={!!message.read_at} />}
-                  </span>
-                );
-                return (
-                  <div key={message.id} className={cn('flex px-2.5', mine ? 'justify-end' : 'justify-start', startsRun ? 'mt-2.5' : 'mt-[3px]')}>
-                    <div className={cn('tg-bubble max-w-[80%] rounded-[18px] sm:max-w-[68%]',
-                      mine ? 'tg-out' : 'tg-in',
-                      endsRun ? (mine ? 'tg-tail-out rounded-br-[4px]' : 'tg-tail-in rounded-bl-[4px]') : (mine ? 'rounded-br-[6px]' : 'rounded-bl-[6px]'),
-                      !startsRun && (mine ? 'rounded-tr-[6px]' : 'rounded-tl-[6px]'),
-                      voice ? 'px-3 pb-1.5 pt-2.5' : 'selectable whitespace-pre-wrap break-words px-3 pb-[7px] pt-[7px] text-[15.5px] leading-[1.35]')}>
-                      {voice ? (
-                        <>
-                          <VoiceBubble voiceId={message.voice_id as string} durationMs={message.duration_ms ?? 1000} peaks={message.peaks ?? null} mine={mine} />
-                          <div className="mt-1 flex justify-end">{meta}</div>
-                        </>
-                      ) : (
-                        <>
-                          {message.content}
-                          {/* Reserves room at the end of the last line; the time sits in it, bottom right. */}
-                          <span aria-hidden className={cn('inline-block h-0', mine ? 'w-[4.6rem]' : 'w-[3.4rem]')} />
-                          <span className="absolute bottom-[5px] right-2.5">{meta}</span>
-                        </>
-                      )}
+              {day.items.map(({ message, index }) => (
+                <Fragment key={message.id}>
+                  {divider?.id === message.id && (
+                    <div role="separator" className="my-3 flex items-center gap-3 px-2 text-[12px] font-semibold text-lune-200">
+                      <span className="h-px flex-1 bg-lune-300/35" />{divider.count} unread message{divider.count === 1 ? '' : 's'}<span className="h-px flex-1 bg-lune-300/35" />
                     </div>
-                  </div>
-                );
-              })}
+                  )}
+                  <MessageRow message={message} mine={message.sender_id === myId}
+                    startsRun={!sameRun(messages[index - 1], message)} endsRun={!sameRun(message, messages[index + 1])}
+                    canReply={canReply} canReact={!!features.reactions && !blocked} canDelete={!!features.deletes} myId={myId} peerName={name} flash={flashId === message.id}
+                    onReply={startReply} onJump={jumpTo} onReact={react} onDelete={askDelete} onOpenImage={openImage} />
+                </Fragment>
+              ))}
             </section>
           ))}
         </div>
@@ -468,62 +932,44 @@ const Thread = ({ peer, myId, onActivity }: { peer: PublicProfile; myId: string;
       {blocked ? (
         <p role="status" className="tg-pill mx-3 mb-[max(0.75rem,env(safe-area-inset-bottom))] mt-1 rounded-full px-4 py-3 text-center text-sm text-white/65">You can’t message this account.</p>
       ) : (
-        <form onSubmit={send} className="relative px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1.5">
-          {problem && <p role="alert" className="mb-2 rounded-2xl border border-red-400/25 bg-red-500/20 px-3.5 py-2 text-sm text-red-100 backdrop-blur">{problem}</p>}
-          {emojiOpen && !recorder.recording && (
-            <div role="dialog" aria-label="Emoji" className="tg-pill absolute bottom-full left-3 right-3 z-30 mb-2 grid max-h-44 grid-cols-9 gap-0.5 overflow-y-auto rounded-3xl p-2 sm:right-auto sm:w-[22rem]">
-              {EMOJIS.map(emoji => <button key={emoji} type="button" onClick={() => addEmoji(emoji)} className="flex h-9 items-center justify-center rounded-xl text-xl transition-colors hover:bg-white/10" aria-label={`Insert ${emoji}`}>{emoji}</button>)}
-            </div>
-          )}
-          {recorder.recording ? (
-            <div className="flex items-center gap-2">
-              <CircleButton label="Cancel recording" onClick={recorder.cancel} className="text-red-300 hover:text-red-200"><Trash2 size={19} /></CircleButton>
-              <div className="tg-pill flex h-11 min-w-0 flex-1 items-center gap-3 rounded-full px-4">
-                <span role="timer" aria-label="Recording time" className="flex shrink-0 items-center gap-2 text-[15px] font-medium tabular-nums"><span aria-hidden className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-500" />{clock(recorder.elapsed)}</span>
-                <div aria-hidden className="flex h-7 min-w-0 flex-1 items-center justify-end gap-[2px] overflow-hidden">
-                  {recorder.live.map((bar, index) => <span key={index} style={{ height: `${Math.max(14, bar)}%` }} className="w-[3px] shrink-0 rounded-full bg-lune-300" />)}
-                </div>
-              </div>
-              <CircleButton label="Send voice message" onClick={() => void recorder.stop().then(sendVoice)} disabled={sending} className="bg-lune-500 text-white hover:bg-lune-600">
-                {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <SendHorizontal size={19} />}
-              </CircleButton>
-            </div>
-          ) : (
-            <div className="flex items-end gap-2">
-              <CircleButton label="Emoji" onClick={() => setEmojiOpen(open => !open)} className={emojiOpen ? 'text-lune-300' : undefined}><Smile size={21} /></CircleButton>
-              <div className="tg-pill flex min-h-[2.75rem] min-w-0 flex-1 items-center rounded-[1.4rem] px-4 transition-shadow focus-within:shadow-[0_0_0_2px_rgba(192,132,252,0.45)]">
-                <textarea
-                  ref={composer} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={onKeyDown}
-                  maxLength={MAX_LENGTH} rows={1} disabled={sending} enterKeyHint="send" autoComplete="off"
-                  aria-label={`Message ${name}`} placeholder="Message"
-                  className="max-h-[132px] min-h-[2.25rem] w-full resize-none bg-transparent py-[9px] text-[15.5px] leading-snug text-white outline-none placeholder:text-white/45 disabled:opacity-60"
-                />
-              </div>
-              {draft.trim() ? (
-                <CircleButton type="submit" label="Send message" disabled={sending} className="bg-lune-500 text-white hover:bg-lune-600">
-                  {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <SendHorizontal size={19} />}
-                </CircleButton>
-              ) : (
-                <CircleButton label="Record a voice message" onClick={startRecording} disabled={sending}>
-                  {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic size={21} />}
-                </CircleButton>
-              )}
-            </div>
-          )}
-          {draft.length > MAX_LENGTH - 200 && <p className="mt-1 text-right text-xs tabular-nums text-white/50">{draft.length}/{MAX_LENGTH}</p>}
-        </form>
+        <Composer peerId={peer.id} myId={myId} name={name} features={features} replyTo={replyTo} onCancelReply={cancelReply} onSent={appendSent} />
       )}
+      {confirm && <ConfirmDialog confirm={confirm} onClose={() => setConfirm(null)} />}
+      {viewer && <Lightbox images={[viewer]} start={0} onClose={() => setViewer(null)} />}
     </div>
   );
 };
+
+/** A chat on a phone takes the whole visible screen (above the keyboard), over the bottom bar. */
+const MobileChatShell = ({ children }: { children: ReactNode }) => {
+  const box = useVisualViewport();
+  // The page behind must not scroll while the chat is open, or iPhones slide it when the keyboard opens.
+  useEffect(() => {
+    const root = document.documentElement;
+    const before = root.style.overflow;
+    root.style.overflow = 'hidden';
+    return () => { root.style.overflow = before; };
+  }, []);
+  return createPortal(
+    <div className="fixed inset-x-0 z-[60] flex flex-col overflow-hidden bg-background pt-[env(safe-area-inset-top)]" style={{ top: box.top, height: box.height }}>
+      <ChatWallpaper />{children}
+    </div>,
+    document.body,
+  );
+};
+
+const toProfile = (conversation: Conversation): PublicProfile => ({
+  id: conversation.user_id, username: conversation.username, display_name: conversation.display_name,
+  avatar_url: conversation.avatar_url, wallet_address: null, bio: '',
+});
 
 const MessagesView = ({ username, myId }: { username?: string; myId: string }) => {
   const { getProfileByUsername } = useSocial();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState('');
-  const [peer, setPeer] = useState<PublicProfile | null>(null);
-  const [peerState, setPeerState] = useState<'idle' | 'loading' | 'ready' | 'missing' | 'error'>('idle');
+  const [fetched, setFetched] = useState<PublicProfile | null>(null);
+  const [fetchState, setFetchState] = useState<'idle' | 'loading' | 'missing' | 'error'>('idle');
 
   const loadList = useCallback(async () => {
     try {
@@ -543,34 +989,42 @@ const MessagesView = ({ username, myId }: { username?: string; myId: string }) =
     return () => clearInterval(timer);
   }, [loadList]);
 
+  // Someone you already talk to is known from the list, so their chat opens at once. Anyone else
+  // (a new conversation from a profile or a search) is looked up by username.
+  const known = username ? conversations.find(conversation => conversation.username.toLowerCase() === username.toLowerCase()) : undefined;
+  const knownPeer = useMemo(() => (known ? toProfile(known) : null), [known?.user_id, known?.username, known?.display_name, known?.avatar_url]); // eslint-disable-line react-hooks/exhaustive-deps
+  const lookedUp = fetched && username && fetched.username.toLowerCase() === username.toLowerCase() ? fetched : null;
+  const peer = knownPeer ?? lookedUp;
+
   useEffect(() => {
-    setPeer(null);
-    if (!username) { setPeerState('idle'); return; }
+    if (!username || knownPeer) { setFetchState('idle'); return; }
+    if (lookedUp) return;
     let active = true;
-    setPeerState('loading');
+    setFetchState('loading');
     getProfileByUsername(username)
-      .then(profile => { if (!active) return; setPeer(profile); setPeerState(profile ? 'ready' : 'missing'); })
-      .catch(() => { if (active) setPeerState('error'); });
+      .then(profile => { if (!active) return; setFetched(profile); setFetchState(profile ? 'idle' : 'missing'); })
+      .catch(() => { if (active) setFetchState('error'); });
     return () => { active = false; };
-  }, [username, getProfileByUsername]);
+  }, [username, knownPeer, lookedUp, getProfileByUsername]);
 
   const showThread = !!username;
   const isMobile = useIsMobile();
+  const unreadElsewhere = conversations.reduce((total, conversation) => total + (conversation.user_id === peer?.id ? 0 : conversation.unread), 0);
   const threadContent = (
     <>
       {!showThread ? (
         <div className="flex flex-1 items-center justify-center p-6"><div className="tg-pill rounded-3xl px-8 py-10"><EmptyState icon={MessageCircle} title="Your messages">Pick a conversation, or search for someone to start a new one.</EmptyState></div></div>
-      ) : peerState === 'ready' && peer ? (
+      ) : peer ? (
         peer.id === myId
           ? <div className="flex flex-1 items-center justify-center p-6"><div className="tg-pill rounded-3xl px-8 py-10"><EmptyState icon={MessageCircle} title="That’s you">You can’t message yourself. Pick someone else from the list.</EmptyState></div></div>
-          : <Thread key={peer.id} peer={peer} myId={myId} onActivity={loadList} />
-      ) : peerState === 'loading' || peerState === 'idle' ? (
-        <div role="status" className="flex flex-1 items-center justify-center gap-2 text-sm text-white/55"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>
-      ) : (
+          : <Thread key={peer.id} peer={peer} myId={myId} unreadElsewhere={unreadElsewhere} onActivity={loadList} />
+      ) : fetchState === 'missing' || fetchState === 'error' ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6">
-          <div className="tg-pill rounded-3xl px-8 py-8"><EmptyState icon={MessageCircle} title={peerState === 'missing' ? 'Member not found' : 'Couldn’t load this member'}>{peerState === 'missing' ? `No account uses @${username}.` : 'Check your connection and try again.'}</EmptyState></div>
+          <div className="tg-pill rounded-3xl px-8 py-8"><EmptyState icon={MessageCircle} title={fetchState === 'missing' ? 'Member not found' : 'Couldn’t load this member'}>{fetchState === 'missing' ? `No account uses @${username}.` : 'Check your connection and try again.'}</EmptyState></div>
           <Button asChild variant="outline" className="rounded-full"><Link to="/messages">Back to messages</Link></Button>
         </div>
+      ) : (
+        <div role="status" className="flex flex-1 items-center justify-center gap-2 text-sm text-white/55"><Loader2 className="h-4 w-4 animate-spin" /> Opening…</div>
       )}
     </>
   );
@@ -582,8 +1036,8 @@ const MessagesView = ({ username, myId }: { username?: string; myId: string }) =
         <ConversationList conversations={conversations} loading={listLoading} error={listError} activeUsername={username} myId={myId} onRetry={() => void loadList()} />
       </aside>
       {showThread && isMobile
-        // On phones an open chat takes the whole screen, above the bottom bar, so the message box is never covered.
-        ? createPortal(<div className="fixed inset-0 z-[60] flex h-dvh flex-col overflow-hidden bg-background pt-[env(safe-area-inset-top)]"><ChatWallpaper />{threadContent}</div>, document.body)
+        // On phones an open chat takes the whole visible screen, above the bottom bar and the keyboard.
+        ? <MobileChatShell>{threadContent}</MobileChatShell>
         : <section className={cn('relative z-10 flex min-h-0 min-w-0 flex-col', !showThread && 'hidden md:flex')}>{threadContent}</section>}
     </div>
   );

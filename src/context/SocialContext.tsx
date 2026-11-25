@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { api, orNull, uploadImage } from '@/lib/api';
+import { MAX_PICTURES, prepareImage, uploadPictures } from '@/lib/images';
 import { useWallet } from '@/context/WalletContext';
 import { useAccountNotifications } from '@/hooks/useAccountNotifications';
 
@@ -35,6 +36,11 @@ export interface Reply {
   content: string;
   created_at: string;
   profiles?: Pick<PublicProfile, 'username' | 'display_name' | 'avatar_url' | 'wallet_address'>;
+  /** The reply this one answers, and that reply's author. */
+  parent_id?: string | null;
+  reply_to_username?: string | null;
+  /** Who liked this reply. */
+  likes?: { user_id: string }[];
 }
 
 export interface Post {
@@ -42,6 +48,23 @@ export interface Post {
   user_id: string;
   content: string;
   image_url?: string;
+  /** Every picture on the post (up to 10), in order. Older posts list their single image here too. */
+  images?: string[];
+  /** How many follow-up posts the author added in a thread (on the first post). */
+  thread_count?: number;
+  thread_root_id?: string | null;
+  thread_position?: number;
+  community?: { id: string; slug: string; name: string } | null;
+  /** The post this one quotes, shown as a small preview inside it. */
+  quote_of?: string | null;
+  quote?: { id: string; user_id: string; content: string; created_at: string; images: string[]; profiles?: Pick<PublicProfile, 'username' | 'display_name' | 'avatar_url' | 'wallet_address'> } | null;
+  quote_count?: number;
+  /** A poll on this post: its options, when it closes, and every vote (one per member). */
+  poll?: { options: string[]; closes_at: string; votes: { user_id: string; option: number }[] } | null;
+  /** When the author last edited the text (within 15 minutes of posting). */
+  edited_at?: string | null;
+  /** On a profile: this is the member's pinned post. */
+  pinned?: boolean;
   created_at: string;
   post_type?: 'post' | 'repost';
   repost_content?: string;
@@ -71,6 +94,8 @@ export interface ReportTarget {
   label?: string;
 }
 
+export interface PostPart { content: string; images: File[] }
+
 interface SocialContextType {
   posts: Post[];
   notifications: Notification[];
@@ -91,9 +116,14 @@ interface SocialContextType {
   loadMoreNotifications: () => Promise<void>;
   refreshFeed: () => Promise<void>;
   addPost: (content: string, image?: File) => Promise<void>;
+  /** Publishes a post, or a thread when there is more than one part, with up to 10 pictures each. */
+  publish: (parts: PostPart[], options?: { community?: string; quoteOf?: string; poll?: { options: string[]; hours: number }; onProgress?: (done: number, total: number) => void }) => Promise<Post>;
+  /** Your private saved posts. */
+  isBookmarked: (postId: string) => boolean;
+  toggleBookmark: (postId: string) => Promise<boolean>;
   toggleLike: (postId: string) => Promise<boolean>;
   toggleRepost: (postId: string) => Promise<boolean>;
-  addComment: (postId: string, content: string) => Promise<Reply>;
+  addComment: (postId: string, content: string, parentId?: string | null) => Promise<Reply>;
   followUser: (targetUserId: string) => Promise<void>;
   unfollowUser: (targetUserId: string) => Promise<void>;
   isFollowing: (targetUserId: string) => boolean;
@@ -128,6 +158,7 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
   const [posts, setPosts] = useState<Post[]>([]);
   const [followingIds, setFollowingIds] = useState<string[]>([]);
   const [blockedIds, setBlockedIds] = useState<string[]>([]);
+  const [bookmarkIds, setBookmarkIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [feedError, setFeedError] = useState<string | null>(null);
   // Neon has no change stream: the feed polls, so the status reads "Auto-refresh".
@@ -163,7 +194,7 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     fetchPosts();
-    const interval = setInterval(fetchPosts, 15000);
+    const interval = setInterval(() => { if (document.visibilityState === 'visible') void fetchPosts(); }, 15000);
     const onVisible = () => { if (document.visibilityState === 'visible') fetchPosts(); };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
@@ -201,9 +232,11 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     setBlockedIds([]);
+    setBookmarkIds([]);
     if (!userId) return;
     let active = true;
     api<string[]>('/api/me/blocks').then(ids => { if (active && currentUserId.current === userId) setBlockedIds(ids); }).catch(() => undefined);
+    api<string[]>('/api/me/bookmarks?ids=1').then(ids => { if (active && currentUserId.current === userId) setBookmarkIds(ids); }).catch(() => undefined);
     return () => { active = false; };
   }, [userId]);
 
@@ -244,6 +277,38 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const publish: SocialContextType['publish'] = async (parts, options = {}) => {
+    const author = requireAccount();
+    if (!parts.length || parts.length > 10) throw new Error('A thread has 1 to 10 posts.');
+    parts.forEach((part, index) => {
+      const label = parts.length > 1 ? ` (post ${index + 1})` : '';
+      if (part.content.trim().length > 2000) throw new Error(`Posts must be 2,000 characters or fewer${label}.`);
+      if (part.images.length > MAX_PICTURES) throw new Error(`A post can have up to ${MAX_PICTURES} pictures${label}.`);
+      if (!part.content.trim() && !part.images.length) throw new Error(`Write something or attach a picture${label}.`);
+    });
+    if (postingUsers.current.has(author)) throw new Error('Your post is already being saved.');
+    postingUsers.current.add(author);
+    try {
+      const files = await Promise.all(parts.flatMap(part => part.images).map(prepareImage));
+      let done = 0;
+      options.onProgress?.(0, files.length);
+      const urls = await uploadPictures(files, count => { done = count; options.onProgress?.(done, files.length); });
+      let cursor = 0;
+      const body = { parts: parts.map(part => ({ content: part.content.trim(), images: urls.slice(cursor, cursor += part.images.length) })), community: options.community, quote_of: options.quoteOf, poll: options.poll };
+      if (currentUserId.current !== author) throw new Error('Your account changed while posting. Log in and try again.');
+      const post = await api<Post>('/api/posts', { method: 'POST', body });
+      if (!options.community) {
+        requestNumber.current += 1;
+        setPosts(previous => [post, ...previous.filter(row => row.id !== post.id)].slice(0, visibleCount.current));
+        setLoading(false);
+        await fetchPosts();
+      }
+      return post;
+    } finally {
+      postingUsers.current.delete(author);
+    }
+  };
+
   const toggleRelation = async (table: 'likes' | 'reposts', postId: string): Promise<boolean> => {
     const author = requireAccount();
     const key = `${table}:${author}:${postId}`;
@@ -263,7 +328,7 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
     } finally { busyRelations.current.delete(key); }
   };
 
-  const addComment = async (postId: string, content: string): Promise<Reply> => {
+  const addComment = async (postId: string, content: string, parentId?: string | null): Promise<Reply> => {
     const author = requireAccount();
     const text = content.trim();
     if (!text || text.length > 1000) throw new Error('Replies must contain 1–1,000 characters.');
@@ -271,7 +336,7 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
     if (busyRelations.current.has(key)) throw new Error('Your reply is already being saved.');
     busyRelations.current.add(key);
     try {
-      const reply = await api<Reply>(`/api/posts/${postId}/replies`, { method: 'POST', body: { content: text } });
+      const reply = await api<Reply>(`/api/posts/${postId}/replies`, { method: 'POST', body: { content: text, ...(parentId ? { parent_id: parentId } : {}) } });
       requestNumber.current += 1;
       setPosts(previous => previous.map(post => post.id === postId ? { ...post, replies: [...(post.replies || []).filter(row => row.id !== reply.id), reply] } : post));
       await fetchPosts();
@@ -360,13 +425,20 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
       loading, feedError, liveStatus, hasMore, loadingMore, loadMore,
       notificationsLoading, notificationsError, notificationsReady,
       notificationsHasMore, notificationsLoadingMore, markingNotificationsRead,
-      refreshNotifications, loadMoreNotifications, refreshFeed: fetchPosts, addPost,
+      refreshNotifications, loadMoreNotifications, refreshFeed: fetchPosts, addPost, publish,
       toggleLike: postId => toggleRelation('likes', postId), toggleRepost: postId => toggleRelation('reposts', postId),
       addComment, followUser, unfollowUser, isFollowing: targetUserId => followingIds.includes(targetUserId),
       followingCount: followingIds.length, followingLoading, followingError, refreshFollowing: fetchFollowing,
       searchUsers, getProfileByUsername, markNotificationsAsRead,
       deletePost, deleteReply, report,
       isBlocked: profileId => blockedIds.includes(profileId),
+      isBookmarked: postId => bookmarkIds.includes(postId),
+      toggleBookmark: async postId => {
+        requireAccount();
+        const { active } = await api<{ active: boolean }>(`/api/posts/${postId}/bookmark`, { method: 'POST', body: {} });
+        setBookmarkIds(previous => (active ? [...previous.filter(id => id !== postId), postId] : previous.filter(id => id !== postId)));
+        return active;
+      },
       blockUser: profileId => setBlocked(profileId, true), unblockUser: profileId => setBlocked(profileId, false),
     }}>
       {children}

@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Home,
   Radio,
@@ -24,7 +24,9 @@ import {
   Gavel,
   PlayCircle,
   LogOut,
+  ChevronDown,
   BadgeCheck,
+  Bookmark,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Link, useLocation } from 'react-router-dom';
@@ -41,9 +43,18 @@ export const navSections = [
       { icon: Home, label: 'Feed', path: '/' },
       { icon: Bell, label: 'Activity', path: '/notifications' },
       { icon: MessageCircle, label: 'Messages', path: '/messages' },
+      { icon: Users, label: 'Communities', path: '/communities' },
+      { icon: Bookmark, label: 'Saved', path: '/bookmarks' },
       { icon: Radio, label: 'Spaces', path: '/spaces' },
       { icon: BadgeCheck, label: 'Premium', path: '/premium' },
-      { icon: Users, label: 'Communities', path: '/communities' },
+    ],
+  },
+  {
+    title: 'Earn',
+    items: [
+      { icon: Trophy, label: 'Leaderboard', path: '/leaderboard' },
+      { icon: Gift, label: 'Rewards', path: '/rewards' },
+      { icon: UserPlus, label: 'Invite friends', path: '/referrals' },
     ],
   },
   {
@@ -51,35 +62,26 @@ export const navSections = [
     items: [
       { icon: CandlestickChart, label: 'Explorer', path: '/explorer' },
       { icon: PieChart, label: 'Analytics', path: '/analytics' },
-      { icon: PlayCircle, label: 'Demo Trade', path: '/demo-trade' },
-      { icon: Rocket, label: 'Launchpad', path: '/launchpad' },
-      { icon: ShieldAlert, label: 'Degen Tools', path: '/degen-tools' },
-    ],
-  },
-  {
-    title: 'Earn & Collect',
-    items: [
-      { icon: Lock, label: 'Staking', path: '/staking' },
-      { icon: ImageIcon, label: 'NFTs', path: '/nfts' },
-      { icon: Gavel, label: 'Live Auction', path: '/live-auction' },
-      { icon: Gift, label: 'Rewards', path: '/rewards' },
-      { icon: Trophy, label: 'Leaderboard', path: '/leaderboard' },
-    ],
-  },
-  {
-    title: 'Ecosystem',
-    items: [
-      { icon: Wallet, label: 'Wallet', path: '/wallet' },
-      { icon: ArrowRightLeft, label: 'Bridge', path: '/bridge' },
-      { icon: Vote, label: 'Governance', path: '/governance' },
-      { icon: UserPlus, label: 'Referrals', path: '/referrals' },
-      { icon: Briefcase, label: 'Jobs', path: '/jobs' },
     ],
   },
 ];
 
+/** Pages still being built. They sit in a folded "Coming soon" list so nobody lands on one by surprise. */
+export const comingSoon = [
+  { icon: Wallet, label: 'Wallet', path: '/wallet' },
+  { icon: PlayCircle, label: 'Demo Trade', path: '/demo-trade' },
+  { icon: Rocket, label: 'Launchpad', path: '/launchpad' },
+  { icon: ShieldAlert, label: 'Degen Tools', path: '/degen-tools' },
+  { icon: Lock, label: 'Staking', path: '/staking' },
+  { icon: ImageIcon, label: 'NFTs', path: '/nfts' },
+  { icon: Gavel, label: 'Live Auction', path: '/live-auction' },
+  { icon: ArrowRightLeft, label: 'Bridge', path: '/bridge' },
+  { icon: Vote, label: 'Governance', path: '/governance' },
+  { icon: Briefcase, label: 'Jobs', path: '/jobs' },
+];
+
 /** Flat list kept for any consumer that imported it previously. */
-export const navItems = navSections.flatMap(s => s.items);
+export const navItems = [...navSections.flatMap(s => s.items), ...comingSoon];
 
 const NavLink = ({
   icon: Icon,
@@ -120,6 +122,25 @@ const NavLink = ({
   </Link>
 );
 
+const ComingSoon = ({ current, onClose }: { current: string; onClose?: () => void }) => {
+  const inside = comingSoon.some(item => item.path === current);
+  const [open, setOpen] = useState(inside);
+  return (
+    <div>
+      <button type="button" onClick={() => setOpen(value => !value)} aria-expanded={open}
+        className="flex w-full items-center gap-2 px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/25 hover:text-white/50">
+        Coming soon
+        <ChevronDown size={12} className={cn('transition-transform', open && 'rotate-180')} />
+      </button>
+      {open && (
+        <div className="space-y-0.5 opacity-70">
+          {comingSoon.map(item => <NavLink key={item.path} {...item} active={current === item.path} onClick={onClose} />)}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const SidebarContent = ({ onClose }: { onClose?: () => void }) => {
   const location = useLocation();
   const { isAuthenticated, disconnect } = useWallet();
@@ -144,6 +165,7 @@ export const SidebarContent = ({ onClose }: { onClose?: () => void }) => {
             </div>
           </div>
         ))}
+        <ComingSoon current={location.pathname} onClose={onClose} />
       </nav>
 
       <div className="hidden lg:block pt-3 border-t border-white/[0.06]">

@@ -4,6 +4,7 @@ import { uuidParam } from '../../../../utils/admin';
 import { requirePermission } from '../../../../utils/auth';
 import { rateLimit } from '../../../../utils/limits';
 import { sql } from '../../../../utils/db';
+import { notifyPostOwner } from '../../../../utils/push';
 
 // Body: { active?: boolean } — true to like, false to undo, omitted to toggle. Returns the new state.
 export default defineHandler(async (event) => {
@@ -14,7 +15,10 @@ export default defineHandler(async (event) => {
   if (body.active !== undefined && typeof body.active !== 'boolean') throw new HTTPError('Send { active: true | false }', { status: 400 });
   const active = typeof body.active === 'boolean' ? body.active : !(await sql`select 1 from public.likes where post_id = ${post} and user_id = ${me.id}`).length;
   try {
-    if (active) await sql`insert into public.likes (post_id, user_id) values (${post}, ${me.id}) on conflict do nothing`;
+    if (active) {
+      const added = await sql`insert into public.likes (post_id, user_id) values (${post}, ${me.id}) on conflict do nothing returning post_id`;
+      if (added.length) await notifyPostOwner(me.id, post, 'like');
+    }
     else await sql`delete from public.likes where post_id = ${post} and user_id = ${me.id}`;
   } catch (error) {
     // Raised by the database when either member has blocked the other.

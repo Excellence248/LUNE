@@ -3,8 +3,10 @@ import * as React from "react";
 const MOBILE_BREAKPOINT = 768;
 
 export function useIsMobile() {
-  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(
-    undefined,
+  // Read the real width on the very first render. Starting at "not mobile" drew phone layouts in the
+  // wrong place for a frame and then remounted them.
+  const [isMobile, setIsMobile] = React.useState<boolean>(
+    () => typeof window !== "undefined" && window.innerWidth < MOBILE_BREAKPOINT,
   );
 
   React.useEffect(() => {

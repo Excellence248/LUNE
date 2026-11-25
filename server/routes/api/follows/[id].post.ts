@@ -4,6 +4,7 @@ import { uuidParam } from '../../../utils/admin';
 import { requirePermission } from '../../../utils/auth';
 import { rateLimit } from '../../../utils/limits';
 import { sql } from '../../../utils/db';
+import { nameOf, pushTo } from '../../../utils/push';
 
 // Body: { active: boolean } — true to follow the profile :id, false to unfollow.
 export default defineHandler(async (event) => {
@@ -14,7 +15,13 @@ export default defineHandler(async (event) => {
   if (typeof active !== 'boolean') throw new HTTPError('Send { active: true | false }', { status: 400 });
   if (target === me.id) throw new HTTPError('You cannot follow yourself.', { status: 400 });
   try {
-    if (active) await sql`insert into public.follows (follower_id, following_id) values (${me.id}, ${target}) on conflict do nothing`;
+    if (active) {
+      const added = await sql`insert into public.follows (follower_id, following_id) values (${me.id}, ${target}) on conflict do nothing returning follower_id`;
+      if (added.length) {
+        const { name, username } = await nameOf(me.id);
+        await pushTo(target, { title: `${name} followed you`, body: 'Tap to see their profile', url: `/profile/${encodeURIComponent(username)}`, tag: `follow:${me.id}`, category: 'follows' });
+      }
+    }
     else await sql`delete from public.follows where follower_id = ${me.id} and following_id = ${target}`;
   } catch (error) {
     // Raised by the database when either member has blocked the other.

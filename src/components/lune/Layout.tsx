@@ -1,4 +1,5 @@
 import React from 'react';
+import { PushBanner } from './PushControl';
 import { useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
@@ -14,12 +15,17 @@ interface LayoutProps {
 
 const Layout = ({ children, className, noPadding = false }: LayoutProps) => {
   const { pathname } = useLocation();
+  // Each page fades in once. Opening a conversation only changes the URL inside Messages, so it must not
+  // rebuild the whole page (that replayed the animation and reloaded the list every time).
+  const pageKey = pathname.startsWith('/messages') ? '/messages' : pathname;
   return (
     <div className="min-h-screen lune-backdrop text-white flex flex-col">
       <Sidebar />
       <main className="relative lg:pl-72 min-h-screen flex flex-col w-full pb-28 lg:pb-0">
         <TopBar />
-        <div key={pathname} className={cn('lune-page-enter flex-1 w-full max-w-[1680px] mx-auto', !noPadding && 'px-4 py-6 md:px-10 md:py-10', className)}>
+        {/* Outside the page body, so a page that lays itself out in columns is never squeezed by it. */}
+        <PushBanner />
+        <div key={pageKey} className={cn('lune-page-enter flex-1 w-full max-w-[1680px] mx-auto', !noPadding && 'px-4 py-6 md:px-10 md:py-10', className)}>
           <Repost />
           {children}
         </div>

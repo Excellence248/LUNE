@@ -63,6 +63,27 @@ export interface Overview {
   reposts: number;
   follows: number;
   open_reports: number;
+  messages_7d: number;
+  verified: number;
+  active_7d: number;
+  communities: number;
+  tips: number;
+  tips_usdc: number;
+  polls: number;
+  push_devices: number;
+  /** Sign-ups per day for the last 14 days, oldest first. */
+  signups: { day: string; count: number }[];
+}
+
+export interface AdminCommunity {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  created_at: string;
+  owner: { id: string; username: string };
+  members: number;
+  posts: number;
 }
 
 export interface AdminReport {
@@ -85,7 +106,7 @@ export interface AdminReport {
 
 export interface AuditEntry {
   id: string;
-  action: 'suspend' | 'reinstate' | 'remove_post' | 'remove_reply' | 'grant_badge' | 'revoke_badge' | 'resolve_report' | 'dismiss_report';
+  action: 'suspend' | 'reinstate' | 'remove_post' | 'remove_reply' | 'grant_badge' | 'revoke_badge' | 'resolve_report' | 'dismiss_report' | 'remove_community';
   reason: string;
   details: { content?: string; expires_at?: string | null; tier?: BadgeTier | null };
   created_at: string;

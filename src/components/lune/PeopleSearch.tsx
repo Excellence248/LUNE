@@ -51,6 +51,14 @@ const SearchField = ({ onNavigate, autoFocus = false }: { onNavigate?: () => voi
     return () => document.removeEventListener('mousedown', dismiss);
   }, []);
 
+  const seeAll = () => {
+    const value = query.trim();
+    setOpen(false);
+    setQuery('');
+    navigate(`/search?q=${encodeURIComponent(value)}`);
+    onNavigate?.();
+  };
+
   const selectUser = (username: string) => {
     setOpen(false);
     setQuery('');
@@ -67,7 +75,7 @@ const SearchField = ({ onNavigate, autoFocus = false }: { onNavigate?: () => voi
         maxLength={65}
         onChange={event => { setQuery(event.target.value); setOpen(true); setActiveIndex(-1); }}
         onFocus={() => setOpen(true)}
-        placeholder="Search people…"
+        placeholder="Search Lune…"
         role="combobox"
         aria-label="Search people by name or username"
         aria-autocomplete="list"
@@ -81,9 +89,12 @@ const SearchField = ({ onNavigate, autoFocus = false }: { onNavigate?: () => voi
             setOpen(true);
             if (results.length) setActiveIndex(previous => event.key === 'ArrowDown' ? (previous + 1) % results.length : previous <= 0 ? results.length - 1 : previous - 1);
           }
-          if (event.key === 'Enter' && open && results.length) {
+          if (event.key === 'Enter' && open && results.length && activeIndex >= 0) {
             event.preventDefault();
-            selectUser(results[Math.max(0, activeIndex)].username);
+            selectUser(results[activeIndex].username);
+          } else if (event.key === 'Enter' && term) {
+            event.preventDefault();
+            seeAll();
           }
         }}
         className="h-10 rounded-full border-white/10 glass-soft pl-11 text-white"
@@ -100,6 +111,7 @@ const SearchField = ({ onNavigate, autoFocus = false }: { onNavigate?: () => voi
               </button>
             ))}
           </div>
+          <button onClick={seeAll} className="mt-1 w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-lune-300 hover:bg-white/[0.05]">See all results for “{term}” — posts, people, communities</button>
         </div>
       )}
     </div>
