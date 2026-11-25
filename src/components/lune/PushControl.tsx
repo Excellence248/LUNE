@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Bell, BellOff, X } from 'lucide-react';
+import { Bell, BellOff, X, Volume2, VolumeX } from 'lucide-react';
 import { usePush } from '@/hooks/usePush';
 import { useWallet } from '@/context/WalletContext';
 import { Switch } from '@/components/ui/switch';
@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { showError, showSuccess } from '@/utils/toast';
 
 const DISMISSED = 'lune_push_banner_dismissed';
+const SOUND_KEY = 'lune_notification_sound';
 const isIos = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
 const installed = () => window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
 
@@ -24,6 +25,7 @@ type Kind = (typeof KINDS)[number][0];
 const PushKinds = () => {
   const [prefs, setPrefs] = useState<Record<Kind, boolean> | null>(null);
   const [available, setAvailable] = useState(true);
+  const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem(SOUND_KEY) !== 'false');
   useEffect(() => {
     let active = true;
     api<Record<Kind, boolean> & { available: boolean }>('/api/push/prefs').then(data => { if (active) { setPrefs(data); setAvailable(data.available); } }).catch(() => undefined);
@@ -38,6 +40,10 @@ const PushKinds = () => {
       showError(cause instanceof Error ? cause.message : 'That setting could not be saved.');
     }
   };
+  const toggleSound = (value: boolean) => {
+    setSoundEnabled(value);
+    localStorage.setItem(SOUND_KEY, value ? 'true' : 'false');
+  };
   return (
     <div className="mt-5 divide-y divide-white/[0.06] rounded-2xl border border-white/[0.08] bg-white/[0.02]">
       {KINDS.map(([kind, label, hint]) => (
@@ -46,6 +52,10 @@ const PushKinds = () => {
           <Switch checked={prefs[kind]} onCheckedChange={value => void change(kind, value)} aria-label={label} />
         </div>
       ))}
+      <div className="flex items-center gap-3 px-4 py-3">
+        <div className="min-w-0 flex-1"><p className="text-sm font-medium text-white">Notification sound</p><p className="text-xs text-white/45">Play a sound when new notifications arrive while Lune is open</p></div>
+        <Switch checked={soundEnabled} onCheckedChange={value => void toggleSound(value)} aria-label="Notification sound" />
+      </div>
     </div>
   );
 };
