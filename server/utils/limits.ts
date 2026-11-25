@@ -26,6 +26,7 @@ export const LIMITS = {
   call: [20, 600],
   callPoll: [900, 600],
   callSignal: [600, 600],
+  notificationRead: [60, 600],
 } as const satisfies Record<string, readonly [number, number]>;
 
 /** The caller's IP as Vercel reports it; "local" in development. */

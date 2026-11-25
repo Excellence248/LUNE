@@ -2,10 +2,12 @@ import { defineHandler } from 'nitro';
 import { HTTPError, readBody } from 'nitro/h3';
 import { requireViewer } from '../../../utils/auth';
 import { sql } from '../../../utils/db';
+import { rateLimit } from '../../../utils/limits';
 
 // Body: { ids?: string[] } — marks those (or, without ids, all) of the caller's notifications read.
 export default defineHandler(async (event) => {
   const { profile } = await requireViewer(event);
+  await rateLimit('notificationRead', profile.id);
   const { ids } = ((await readBody<{ ids?: unknown }>(event)) ?? {}) as { ids?: unknown };
   if (ids !== undefined && (!Array.isArray(ids) || ids.length > 500 || !ids.every(id => typeof id === 'string' && /^[0-9a-f-]{36}$/i.test(id)))) {
     throw new HTTPError('ids must be a list of notification IDs', { status: 400 });

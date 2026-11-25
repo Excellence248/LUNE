@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import type { Notification } from '@/context/SocialContext';
 
 export const useAccountNotifications = (userId: string | undefined) => {
@@ -33,8 +33,10 @@ export const useAccountNotifications = (userId: string | undefined) => {
       setOwnerId(userId);
       setHasMore(data.hasMore);
       setError(null);
-    } catch {
-      if (currentUser.current === userId && request === requestNumber.current) setError('Notifications could not be refreshed. Please retry.');
+    } catch (error) {
+          if (currentUser.current === userId && request === requestNumber.current) {
+            setError(error instanceof ApiError ? error.message : 'Notifications could not be refreshed. Please retry.');
+          }
     } finally {
       if (currentUser.current === userId && request === requestNumber.current) setLoading(false);
     }
@@ -76,24 +78,24 @@ export const useAccountNotifications = (userId: string | undefined) => {
   };
 
   const markAsRead = useCallback(async (ids?: string[]) => {
-    if (!userId || currentUser.current !== userId) throw new Error('Sign in to mark notifications read.');
-    if (ids?.length === 0 || markingUsers.current.has(userId)) return;
-    markingUsers.current.add(userId);
-    setMarkingOwner(userId);
-    try {
-      const data = await api<string[]>('/api/notifications/read', { method: 'POST', body: ids ? { ids } : {} })
-        .catch(() => { throw new Error('Notifications could not be marked read. Check your connection and retry.'); });
-      if (currentUser.current !== userId) return;
-      requestNumber.current += 1;
-      const updated = new Set(data);
-      setNotifications(previous => previous.map(row => updated.has(row.id) ? { ...row, read: true } : row));
-      setUnreadCount(previous => Math.max(0, previous - updated.size));
-      await refresh();
-    } finally {
-      markingUsers.current.delete(userId);
-      if (currentUser.current === userId) setMarkingOwner(null);
-    }
-  }, [userId, refresh]);
+      if (!userId || currentUser.current !== userId) throw new Error('Sign in to mark notifications read.');
+      if (ids?.length === 0 || markingUsers.current.has(userId)) return;
+      markingUsers.current.add(userId);
+      setMarkingOwner(userId);
+      try {
+        const data = await api<string[]>('/api/notifications/read', { method: 'POST', body: ids ? { ids } : {} });
+        if (currentUser.current !== userId) return;
+        requestNumber.current += 1;
+        const updated = new Set(data);
+        setNotifications(previous => previous.map(row => updated.has(row.id) ? { ...row, read: true } : row));
+        setUnreadCount(previous => Math.max(0, previous - updated.size));
+      } catch (error) {
+        if (currentUser.current === userId) throw error;
+      } finally {
+        markingUsers.current.delete(userId);
+        if (currentUser.current === userId) setMarkingOwner(null);
+      }
+    }, [userId]);
 
   const ready = !!userId && ownerId === userId;
   return {
