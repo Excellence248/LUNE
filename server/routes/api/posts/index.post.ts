@@ -12,13 +12,16 @@ const MAX_PARTS = 10;
 const MAX_PICTURES = 10;
 
 interface PartInput { content?: unknown; images?: unknown }
-interface Body { content?: unknown; image_url?: unknown; images?: unknown; parts?: unknown; community?: unknown }
+interface Body { content?: unknown; image_url?: unknown; images?: unknown; parts?: unknown; community?: unknown; quote_of?: unknown; poll?: unknown }
+const POLL_HOURS = [1, 6, 24, 72, 168];
 
 // Publishes a post, or a whole thread, with up to 10 pictures each.
 //   { parts: [{ content, images: ['/api/media/<id>', …] }, …], community?: slug }
 //     parts[0] is the post and the rest are its follow-ups (a thread of up to 10 posts).
 //   { content, image_url? }   the original single-post form, still accepted.
 // Pictures must be ones the caller uploaded to /api/media. Every part is checked by the hate-speech filter.
+//   quote_of: the ID of a post this one quotes (its preview shows inside the new post).
+//   poll: { options: [2–4 texts of 1–80 characters], hours: 1 | 6 | 24 | 72 | 168 } on the first post.
 export default defineHandler(async (event) => {
   const me = await requirePermission(event, 'post.create');
   await rateLimit('post', me.id);
@@ -65,6 +68,31 @@ export default defineHandler(async (event) => {
     community = found.id as string;
   }
 
+  // Quote and poll (both need the bookmarks/quotes/polls migration).
+  const quoteOf = typeof body.quote_of === 'string' && /^[0-9a-f-]{36}$/.test(body.quote_of) ? body.quote_of : null;
+  if (body.quote_of != null && !quoteOf) throw new HTTPError('Invalid quote.', { status: 400 });
+  let poll: { options: string[]; hours: number } | null = null;
+  if (body.poll != null) {
+    const raw = body.poll as { options?: unknown; hours?: unknown };
+    const options = Array.isArray(raw.options) ? raw.options.map(option => (typeof option === 'string' ? option.replace(/\s+/g, ' ').trim() : '')) : [];
+    if (options.length < 2 || options.length > 4 || options.some(option => !option || option.length > 80)) throw new HTTPError('A poll needs 2 to 4 options of up to 80 characters.', { status: 400 });
+    if (new Set(options.map(option => option.toLowerCase())).size !== options.length) throw new HTTPError('Poll options must be different from each other.', { status: 400 });
+    const hours = Number(raw.hours);
+    if (!POLL_HOURS.includes(hours)) throw new HTTPError('Choose how long the poll runs.', { status: 400 });
+    if (!parts[0].content) throw new HTTPError('Ask your question in the post text.', { status: 400 });
+    poll = { options, hours };
+  }
+  if (quoteOf || poll) {
+    const [ready] = await sql`select to_regclass('public.polls') is not null as ok`;
+    if (!ready?.ok) throw new HTTPError('Quotes and polls aren’t available yet. Please try again soon.', { status: 503 });
+  }
+  if (quoteOf) {
+    const [target] = await sql`select public.is_blocked_between(user_id, ${me.id}) as blocked from public.posts where id = ${quoteOf}`;
+    if (!target) throw new HTTPError('The post you are quoting no longer exists.', { status: 404 });
+    if (target.blocked) throw new HTTPError('You can’t quote this account.', { status: 403 });
+  }
+  if (poll) for (const option of poll.options) await enforceCivility(me.id, 'post', option);
+
   try {
     let rootId: string;
     if (features.threads) {
@@ -74,6 +102,16 @@ export default defineHandler(async (event) => {
       // The original single post, for a database without the new columns.
       const [created] = await sql`insert into public.posts (user_id, content, image_url) values (${me.id}, ${parts[0].content}, ${parts[0].images[0] ?? null}) returning id`;
       rootId = created.id as string;
+    }
+    if (quoteOf || poll) {
+      try {
+        if (quoteOf) await sql`update public.posts set quote_of = ${quoteOf} where id = ${rootId}`;
+        if (poll) await sql`insert into public.polls (post_id, options, closes_at) values (${rootId}, ${poll.options}, now() + make_interval(hours => ${poll.hours}))`;
+      } catch (error) {
+        // Never leave a post without the quote or poll it was meant to have.
+        await sql`delete from public.posts where id = ${rootId} or thread_root_id = ${rootId}`.catch(() => undefined);
+        throw error;
+      }
     }
     const [row] = await sql`select public.post_json(po) as post from public.posts po where po.id = ${rootId}`;
     for (const part of parts) if (part.content) await notifyMentions(me.id, part.content, `/post/${rootId}`);

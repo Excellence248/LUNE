@@ -26,6 +26,7 @@ import {
   LogOut,
   ChevronDown,
   BadgeCheck,
+  Bookmark,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Link, useLocation } from 'react-router-dom';
@@ -43,6 +44,7 @@ export const navSections = [
       { icon: Bell, label: 'Activity', path: '/notifications' },
       { icon: MessageCircle, label: 'Messages', path: '/messages' },
       { icon: Users, label: 'Communities', path: '/communities' },
+      { icon: Bookmark, label: 'Saved', path: '/bookmarks' },
       { icon: Radio, label: 'Spaces', path: '/spaces' },
       { icon: BadgeCheck, label: 'Premium', path: '/premium' },
     ],

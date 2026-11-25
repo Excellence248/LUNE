@@ -2,7 +2,10 @@
 import VerifiedBadge from '@/components/lune/VerifiedBadge';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { MessageCircle, Repeat2, Heart, Coins, SendHorizontal, MoreHorizontal, Trash2, Flag, Ban, Users, ListTree } from 'lucide-react';
+import { MessageCircle, Repeat2, Heart, Coins, SendHorizontal, MoreHorizontal, Trash2, Flag, Ban, Users, ListTree, Bookmark, Quote } from 'lucide-react';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import CreatePost from './CreatePost';
+import { PollView, QuoteCard } from './PostExtras';
 import ImageGrid from './ImageGrid';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -102,7 +105,8 @@ const ActionButton = ({
 const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardProps) => {
   const navigate = useNavigate();
   const { user: currentUser } = useWallet();
-  const { toggleLike, toggleRepost, addComment, followUser, unfollowUser, isFollowing, followingLoading, followingError, deletePost, deleteReply, isBlocked, blockUser } = useSocial();
+  const { toggleLike, toggleRepost, addComment, followUser, unfollowUser, isFollowing, followingLoading, followingError, deletePost, deleteReply, isBlocked, blockUser, isBookmarked, toggleBookmark } = useSocial();
+  const [quoting, setQuoting] = useState(false);
   const [reporting, setReporting] = useState<ReportTarget | null>(null);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [deleted, setDeleted] = useState(false);
@@ -318,6 +322,8 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
           </p>
 
           <ImageGrid images={post.images?.length ? post.images : post.image_url ? [post.image_url] : []} />
+          {post.quote && <QuoteCard quote={post.quote} />}
+          {post.poll && <PollView postId={post.id} poll={post.poll} />}
 
           {(post.community || (!!post.thread_count && !initialCommentsOpen)) && (
             <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs">
@@ -345,6 +351,14 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
               onClick={() => handleReaction('repost')}
             />
             <ActionButton
+              icon={Quote}
+              tone="up"
+              label={!currentUser ? 'Log in to quote' : 'Quote this post'}
+              count={post.quote_count || 0}
+              disabled={!currentUser}
+              onClick={() => setQuoting(true)}
+            />
+            <ActionButton
               icon={Heart}
               tone="pink"
               label={!currentUser ? 'Log in to like' : isLiked ? 'Unlike' : 'Like'}
@@ -354,6 +368,16 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
               disabled={!currentUser || pending}
               onClick={() => handleReaction('like')}
             />
+            {currentUser && (
+              <ActionButton
+                icon={Bookmark}
+                tone="lune"
+                fill
+                label={isBookmarked(post.id) ? 'Remove from saved' : 'Save post'}
+                active={isBookmarked(post.id)}
+                onClick={() => void toggleBookmark(post.id).then(active => showSuccess(active ? 'Saved to your bookmarks' : 'Removed from your bookmarks')).catch(error => showError(error instanceof Error ? error.message : 'That could not be saved.'))}
+              />
+            )}
             {!isOwnPost && <ActionButton icon={Coins} tone="amber" label={currentUser ? `Tip @${displayUsername || 'author'} in USDC` : 'Log in to tip'} disabled={!currentUser} onClick={() => setIsTipOpen(true)} />}
           </div>
 
@@ -463,6 +487,14 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
         </div>
       </div>
 
+      {quoting && (
+        <Dialog open onOpenChange={open => { if (!open) setQuoting(false); }}>
+          <DialogContent className="max-w-xl overflow-hidden rounded-3xl border-white/10 p-0 glass-strong text-white">
+            <DialogTitle className="sr-only">Quote this post</DialogTitle>
+            <CreatePost quote={sourcePost} onPosted={() => setQuoting(false)} />
+          </DialogContent>
+        </Dialog>
+      )}
       {isTipOpen && <TipModal isOpen onClose={() => setIsTipOpen(false)} recipient={displayUsername || 'Anonymous'} postId={isRepost && post.original_post_id ? post.original_post_id : post.id} />}
       {reporting && <ReportDialog target={reporting} onClose={() => setReporting(null)} />}
       {confirm && <ConfirmDialog confirm={confirm} onClose={() => setConfirm(null)} />}

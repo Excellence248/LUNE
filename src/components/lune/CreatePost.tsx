@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Image as ImageIcon, X, UserRound, Loader2, Plus, ListTree } from 'lucide-react';
+import { Image as ImageIcon, X, UserRound, Loader2, Plus, ListTree, BarChart3 } from 'lucide-react';
+import { QuoteCard } from './PostExtras';
+import type { Post } from '@/context/SocialContext';
+
+const POLL_LENGTHS: [number, string][] = [[1, '1 hour'], [6, '6 hours'], [24, '1 day'], [72, '3 days'], [168, '7 days']];
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { useSocial, type PostPart } from '@/context/SocialContext';
@@ -25,7 +29,9 @@ const Thumb = ({ file, disabled, onRemove }: { file: File; disabled: boolean; on
 };
 
 /** Composer for the home feed and for communities. Up to 10 pictures per post; "Add another post" makes a thread. */
-const CreatePost = ({ community, onPosted, placeholder }: { community?: string; onPosted?: () => void; placeholder?: string }) => {
+const CreatePost = ({ community, onPosted, placeholder, quote }: { community?: string; onPosted?: () => void; placeholder?: string; quote?: Post }) => {
+  // A poll on the first post: 2–4 options and how long it runs.
+  const [poll, setPoll] = useState<{ options: string[]; hours: number } | null>(null);
   const [drafts, setDrafts] = useState<Draft[]>([{ key: 0, content: '', images: [] }]);
   const [posting, setPosting] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -38,7 +44,8 @@ const CreatePost = ({ community, onPosted, placeholder }: { community?: string; 
   const isFirstPost = !!user && !community && !hasPostedFirst(user.id) && !posts.some(post => post.user_id === user.id);
 
   const change = (key: number, patch: Partial<Draft>) => setDrafts(previous => previous.map(draft => draft.key === key ? { ...draft, ...patch } : draft));
-  const ready = drafts.every(draft => draft.content.trim() || draft.images.length) && drafts.some(draft => draft.content.trim() || draft.images.length);
+  const pollReady = !poll || (poll.options.filter(option => option.trim()).length >= 2 && !!drafts[0]?.content.trim());
+  const ready = pollReady && drafts.every(draft => draft.content.trim() || draft.images.length) && drafts.some(draft => draft.content.trim() || draft.images.length);
 
   const handleFiles = (event: React.ChangeEvent<HTMLInputElement>) => {
     const picked = Array.from(event.target.files ?? []);
@@ -59,7 +66,13 @@ const CreatePost = ({ community, onPosted, placeholder }: { community?: string; 
     setPosting(true);
     try {
       const parts: PostPart[] = drafts.map(draft => ({ content: draft.content, images: draft.images }));
-      await publish(parts, { community, onProgress: (done, total) => setProgress(total ? { done, total } : null) });
+      await publish(parts, {
+        community,
+        quoteOf: quote?.id,
+        poll: poll ? { options: poll.options.map(option => option.trim()).filter(Boolean), hours: poll.hours } : undefined,
+        onProgress: (done, total) => setProgress(total ? { done, total } : null),
+      });
+      setPoll(null);
       if (!community) markPostedFirst(user.id);
       setDrafts([{ key: nextKey.current++, content: '', images: [] }]);
       showSuccess(parts.length > 1 ? 'Your thread was posted.' : community ? 'Your post is in the community.' : 'Your public post was saved.');
@@ -113,7 +126,7 @@ const CreatePost = ({ community, onPosted, placeholder }: { community?: string; 
               maxLength={2000}
               onChange={event => change(draft.key, { content: event.target.value })}
               onKeyDown={event => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); void handlePost(); } }}
-              placeholder={index > 0 ? 'Continue your thread…' : placeholder ?? (isFirstPost ? 'Say hello to Lune 👋' : "What's the alpha today?")}
+              placeholder={index > 0 ? 'Continue your thread…' : poll ? 'Ask a question…' : quote ? 'Add your take…' : placeholder ?? (isFirstPost ? 'Say hello to Lune 👋' : "What's the alpha today?")}
               rows={2}
               className="w-full bg-transparent border-none text-[17px] text-white placeholder:text-white/30 focus:outline-none focus:ring-0 resize-none min-h-[64px] pt-2 leading-relaxed"
             />
@@ -124,6 +137,28 @@ const CreatePost = ({ community, onPosted, placeholder }: { community?: string; 
                 ))}
               </div>
             )}
+            {index === 0 && poll && (
+              <div className="mb-3 space-y-2 rounded-2xl border border-white/10 p-3">
+                {poll.options.map((option, at) => (
+                  <div key={at} className="flex items-center gap-2">
+                    <input value={option} maxLength={80} disabled={posting} aria-label={`Poll option ${at + 1}`} placeholder={`Option ${at + 1}${at >= 2 ? ' (optional)' : ''}`}
+                      onChange={event => setPoll(current => current && { ...current, options: current.options.map((value, i) => (i === at ? event.target.value : value)) })}
+                      className="lune-input h-10 flex-1 text-[16px]" />
+                    {at >= 2 && <button type="button" onClick={() => setPoll(current => current && { ...current, options: current.options.filter((_, i) => i !== at) })} aria-label={`Remove option ${at + 1}`} className="text-white/40 hover:text-white"><X size={16} /></button>}
+                  </div>
+                ))}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                  {poll.options.length < 4 ? <button type="button" onClick={() => setPoll(current => current && { ...current, options: [...current.options, ''] })} className="text-xs font-medium text-lune-300 hover:underline">+ Add an option</button> : <span />}
+                  <label className="flex items-center gap-2 text-xs text-white/50">Runs for
+                    <select value={poll.hours} onChange={event => setPoll(current => current && { ...current, hours: Number(event.target.value) })} className="rounded-lg border border-white/10 bg-[#120c22] px-2 py-1 text-white">
+                      {POLL_LENGTHS.map(([hours, label]) => <option key={hours} value={hours}>{label}</option>)}
+                    </select>
+                  </label>
+                  <button type="button" onClick={() => setPoll(null)} className="text-xs text-white/45 hover:text-red-300">Remove poll</button>
+                </div>
+              </div>
+            )}
+            {index === 0 && quote && <div className="mb-3"><QuoteCard quote={{ id: quote.id, user_id: quote.user_id, content: quote.content, created_at: quote.created_at, images: quote.images ?? [], profiles: quote.profiles }} compact /></div>}
             {draft.images.length > 0 && (
               <div className="mt-2 mb-3 grid max-w-md grid-cols-3 gap-1.5 sm:grid-cols-4">
                 {draft.images.map((file, at) => <Thumb key={`${file.name}-${file.size}-${at}`} file={file} disabled={posting} onRemove={() => change(draft.key, { images: draft.images.filter((_, i) => i !== at) })} />)}
@@ -133,6 +168,7 @@ const CreatePost = ({ community, onPosted, placeholder }: { community?: string; 
               <div className="flex items-center gap-1">
                 <button type="button" disabled={posting || draft.images.length >= MAX_PICTURES} onClick={() => { pickFor.current = draft.key; fileInputRef.current?.click(); }} aria-label="Add pictures" className="h-9 w-9 flex items-center justify-center text-lune-300 hover:bg-lune-500/10 rounded-full disabled:opacity-40"><ImageIcon size={18} /></button>
                 {draft.images.length > 0 && <span className="text-xs text-white/40 tabular-nums">{draft.images.length}/{MAX_PICTURES}</span>}
+                {index === 0 && !poll && <button type="button" disabled={posting} onClick={() => setPoll({ options: ['', ''], hours: 24 })} aria-label="Add a poll" title="Add a poll" className="h-9 w-9 flex items-center justify-center text-lune-300 hover:bg-lune-500/10 rounded-full disabled:opacity-40"><BarChart3 size={18} /></button>}
               </div>
               <span className="text-xs text-white/35 tabular-nums">{draft.content.length}/2000</span>
             </div>

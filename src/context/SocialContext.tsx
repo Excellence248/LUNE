@@ -55,6 +55,12 @@ export interface Post {
   thread_root_id?: string | null;
   thread_position?: number;
   community?: { id: string; slug: string; name: string } | null;
+  /** The post this one quotes, shown as a small preview inside it. */
+  quote_of?: string | null;
+  quote?: { id: string; user_id: string; content: string; created_at: string; images: string[]; profiles?: Pick<PublicProfile, 'username' | 'display_name' | 'avatar_url' | 'wallet_address'> } | null;
+  quote_count?: number;
+  /** A poll on this post: its options, when it closes, and every vote (one per member). */
+  poll?: { options: string[]; closes_at: string; votes: { user_id: string; option: number }[] } | null;
   created_at: string;
   post_type?: 'post' | 'repost';
   repost_content?: string;
@@ -107,7 +113,10 @@ interface SocialContextType {
   refreshFeed: () => Promise<void>;
   addPost: (content: string, image?: File) => Promise<void>;
   /** Publishes a post, or a thread when there is more than one part, with up to 10 pictures each. */
-  publish: (parts: PostPart[], options?: { community?: string; onProgress?: (done: number, total: number) => void }) => Promise<Post>;
+  publish: (parts: PostPart[], options?: { community?: string; quoteOf?: string; poll?: { options: string[]; hours: number }; onProgress?: (done: number, total: number) => void }) => Promise<Post>;
+  /** Your private saved posts. */
+  isBookmarked: (postId: string) => boolean;
+  toggleBookmark: (postId: string) => Promise<boolean>;
   toggleLike: (postId: string) => Promise<boolean>;
   toggleRepost: (postId: string) => Promise<boolean>;
   addComment: (postId: string, content: string, parentId?: string | null) => Promise<Reply>;
@@ -145,6 +154,7 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
   const [posts, setPosts] = useState<Post[]>([]);
   const [followingIds, setFollowingIds] = useState<string[]>([]);
   const [blockedIds, setBlockedIds] = useState<string[]>([]);
+  const [bookmarkIds, setBookmarkIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [feedError, setFeedError] = useState<string | null>(null);
   // Neon has no change stream: the feed polls, so the status reads "Auto-refresh".
@@ -218,9 +228,11 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     setBlockedIds([]);
+    setBookmarkIds([]);
     if (!userId) return;
     let active = true;
     api<string[]>('/api/me/blocks').then(ids => { if (active && currentUserId.current === userId) setBlockedIds(ids); }).catch(() => undefined);
+    api<string[]>('/api/me/bookmarks?ids=1').then(ids => { if (active && currentUserId.current === userId) setBookmarkIds(ids); }).catch(() => undefined);
     return () => { active = false; };
   }, [userId]);
 
@@ -278,7 +290,7 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
       options.onProgress?.(0, files.length);
       const urls = await uploadPictures(files, count => { done = count; options.onProgress?.(done, files.length); });
       let cursor = 0;
-      const body = { parts: parts.map(part => ({ content: part.content.trim(), images: urls.slice(cursor, cursor += part.images.length) })), community: options.community };
+      const body = { parts: parts.map(part => ({ content: part.content.trim(), images: urls.slice(cursor, cursor += part.images.length) })), community: options.community, quote_of: options.quoteOf, poll: options.poll };
       if (currentUserId.current !== author) throw new Error('Your account changed while posting. Log in and try again.');
       const post = await api<Post>('/api/posts', { method: 'POST', body });
       if (!options.community) {
@@ -416,6 +428,13 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
       searchUsers, getProfileByUsername, markNotificationsAsRead,
       deletePost, deleteReply, report,
       isBlocked: profileId => blockedIds.includes(profileId),
+      isBookmarked: postId => bookmarkIds.includes(postId),
+      toggleBookmark: async postId => {
+        requireAccount();
+        const { active } = await api<{ active: boolean }>(`/api/posts/${postId}/bookmark`, { method: 'POST', body: {} });
+        setBookmarkIds(previous => (active ? [...previous.filter(id => id !== postId), postId] : previous.filter(id => id !== postId)));
+        return active;
+      },
       blockUser: profileId => setBlocked(profileId, true), unblockUser: profileId => setBlocked(profileId, false),
     }}>
       {children}
