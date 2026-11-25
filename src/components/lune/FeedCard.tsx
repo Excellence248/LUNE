@@ -2,7 +2,7 @@
 import VerifiedBadge from '@/components/lune/VerifiedBadge';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { MessageCircle, Repeat2, Heart, Coins, SendHorizontal, MoreHorizontal, Trash2, Flag, Ban, Users, ListTree, Bookmark, Quote } from 'lucide-react';
+import { MessageCircle, Repeat2, Heart, Coins, SendHorizontal, MoreHorizontal, Trash2, Flag, Ban, Users, ListTree, Bookmark, Quote, Pencil, Pin } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import CreatePost from './CreatePost';
 import { PollView, QuoteCard } from './PostExtras';
@@ -107,6 +107,11 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
   const { user: currentUser } = useWallet();
   const { toggleLike, toggleRepost, addComment, followUser, unfollowUser, isFollowing, followingLoading, followingError, deletePost, deleteReply, isBlocked, blockUser, isBookmarked, toggleBookmark } = useSocial();
   const [quoting, setQuoting] = useState(false);
+  // Editing your own post's text, and whether it is pinned to your profile (changed here).
+  const [editing, setEditing] = useState(false);
+  const [draftText, setDraftText] = useState('');
+  const [edited, setEdited] = useState<{ content: string; at: string } | null>(null);
+  const [pinnedHere, setPinnedHere] = useState<boolean | null>(null);
   const [reporting, setReporting] = useState<ReportTarget | null>(null);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [deleted, setDeleted] = useState(false);
@@ -138,6 +143,27 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
   const isReposted = currentUser ? post.reposts?.some(r => r.user_id === currentUser.id) : false;
   const following = isFollowing(post.user_id);
   const isOwnPost = currentUser?.id === post.user_id;
+  const canEdit = isOwnPost && post.post_type !== 'repost' && Date.now() - new Date(post.created_at).getTime() < 15 * 60 * 1000;
+  const pinned = pinnedHere ?? !!post.pinned;
+
+  const saveEdit = async () => {
+    const text = draftText.trim();
+    if (!text) return;
+    await handleAction(async () => {
+      const saved = await api<Post>(`/api/posts/${post.id}`, { method: 'PATCH', body: { content: text } });
+      setEdited({ content: saved.content, at: saved.edited_at ?? new Date().toISOString() });
+      setEditing(false);
+      showSuccess('Post updated');
+    });
+  };
+
+  const togglePin = async () => {
+    await handleAction(async () => {
+      const result = await api<{ pinned: boolean }>(`/api/posts/${post.id}/pin`, { method: 'POST', body: {} });
+      setPinnedHere(result.pinned);
+      showSuccess(result.pinned ? 'Pinned to your profile' : 'Unpinned from your profile');
+    });
+  };
 
   const handleAction = async (action: () => Promise<unknown>) => {
     if (busy.current) return false;
@@ -244,6 +270,9 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
 
   return (
     <article className="lune-spot lune-spot--soft px-4 md:px-6 py-4 hover:bg-white/[0.015] transition-colors">
+      {pinned && post.pinned !== undefined && (
+        <p className="mb-2 ml-7 flex items-center gap-2 text-xs font-medium text-white/40"><Pin size={13} className="text-lune-300" />Pinned</p>
+      )}
       {(post.repostedBy || (isRepost && post.profiles?.username)) && (
         <button
           onClick={() => navigateToProfile(post.repostedBy || post.profiles?.username)}
@@ -278,6 +307,7 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
             <span className="text-white/25">·</span>
             <Link to={`/post/${post.id}`} aria-label="Open post and replies" className="shrink-0 text-sm text-white/35 hover:underline">
               <time dateTime={post.created_at} title={new Date(post.created_at).toLocaleString()}>{shortAgo(post.created_at)}</time>
+              {(edited || post.edited_at) && <span className="ml-1 text-white/30" title={`Edited ${new Date(edited?.at ?? post.edited_at as string).toLocaleString()}`}>· edited</span>}
             </Link>
             <div className="ml-auto flex shrink-0 items-center gap-1">
             {!isOwnPost && currentUser && !isRepost && (
@@ -304,7 +334,11 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   {isOwnPost ? (
-                    <DropdownMenuItem className="text-red-300 focus:text-red-200" onSelect={askDeletePost}><Trash2 className="mr-2 h-4 w-4" />Delete post</DropdownMenuItem>
+                    <>
+                      {canEdit && <DropdownMenuItem onSelect={() => { setDraftText(edited?.content ?? post.content); setEditing(true); }}><Pencil className="mr-2 h-4 w-4" />Edit post</DropdownMenuItem>}
+                      {!isRepost && !post.thread_root_id && <DropdownMenuItem onSelect={() => void togglePin()}><Pin className="mr-2 h-4 w-4" />{pinned ? 'Unpin from profile' : 'Pin to your profile'}</DropdownMenuItem>}
+                      <DropdownMenuItem className="text-red-300 focus:text-red-200" onSelect={askDeletePost}><Trash2 className="mr-2 h-4 w-4" />Delete post</DropdownMenuItem>
+                    </>
                   ) : (
                     <>
                       <DropdownMenuItem onSelect={() => setReporting({ type: 'post', id: post.id, label: `Post by @${displayUsername}` })}><Flag className="mr-2 h-4 w-4" />Report post</DropdownMenuItem>
@@ -318,8 +352,19 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
           </div>
 
           <p className="selectable mt-1 text-[15px] text-white/85 leading-relaxed whitespace-pre-wrap break-words">
-            {renderContent(body, goTo)}
+            {editing ? null : renderContent(edited?.content ?? body, goTo)}
           </p>
+          {editing && (
+            <div className="mt-2 space-y-2">
+              <textarea value={draftText} maxLength={2000} rows={3} autoFocus aria-label="Edit your post" onChange={event => setDraftText(event.target.value)}
+                className="lune-input w-full resize-none text-[16px] leading-relaxed" />
+              <div className="flex items-center justify-end gap-2">
+                <span className="mr-auto text-xs text-white/35">You can edit for 15 minutes after posting.</span>
+                <button type="button" onClick={() => setEditing(false)} disabled={pending} className="rounded-full px-3 py-1.5 text-sm text-white/60 hover:text-white">Cancel</button>
+                <button type="button" onClick={() => void saveEdit()} disabled={pending || !draftText.trim()} className="lune-btn h-9 px-4 text-sm">{pending ? 'Saving…' : 'Save'}</button>
+              </div>
+            </div>
+          )}
 
           <ImageGrid images={post.images?.length ? post.images : post.image_url ? [post.image_url] : []} />
           {post.quote && <QuoteCard quote={post.quote} />}

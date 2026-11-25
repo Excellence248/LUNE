@@ -61,6 +61,10 @@ export interface Post {
   quote_count?: number;
   /** A poll on this post: its options, when it closes, and every vote (one per member). */
   poll?: { options: string[]; closes_at: string; votes: { user_id: string; option: number }[] } | null;
+  /** When the author last edited the text (within 15 minutes of posting). */
+  edited_at?: string | null;
+  /** On a profile: this is the member's pinned post. */
+  pinned?: boolean;
   created_at: string;
   post_type?: 'post' | 'repost';
   repost_content?: string;
