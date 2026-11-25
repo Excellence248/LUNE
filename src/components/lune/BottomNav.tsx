@@ -1,17 +1,18 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Home, CandlestickChart, Bell, Wallet, User } from 'lucide-react';
+import { Home, Users, Bell, MessageCircle, User } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { useSocial } from '@/context/SocialContext';
+import { useUnreadMessages } from '@/hooks/useUnreadMessages';
 
 const items = [
   { icon: Home, label: 'Feed', path: '/' },
-  { icon: CandlestickChart, label: 'Markets', path: '/explorer' },
+  { icon: Users, label: 'Communities', path: '/communities' },
+  { icon: MessageCircle, label: 'Messages', path: '/messages' },
   { icon: Bell, label: 'Activity', path: '/notifications' },
-  { icon: Wallet, label: 'Wallet', path: '/wallet' },
   { icon: User, label: 'Profile', path: '/profile' },
 ];
 
@@ -45,6 +46,7 @@ const useHideOnScroll = (resetKey: string) => {
 const BottomNav = () => {
   const location = useLocation();
   const { unreadCount } = useSocial();
+  const unreadMessages = useUnreadMessages();
   const hidden = useHideOnScroll(location.pathname);
   const wrapper = useRef<HTMLDivElement>(null);
 
@@ -66,7 +68,7 @@ const BottomNav = () => {
         className="relative mx-auto mb-[max(12px,env(safe-area-inset-bottom))] w-[calc(100%-24px)] max-w-md h-16 rounded-[1.75rem] glass grid grid-cols-5 px-1.5 pointer-events-auto"
       >
         {items.map(item => {
-          const isActive = location.pathname === item.path;
+          const isActive = item.path === '/' ? location.pathname === '/' : location.pathname === item.path || location.pathname.startsWith(item.path + '/');
           return (
             <Link
               key={item.path}
@@ -87,6 +89,9 @@ const BottomNav = () => {
                   strokeWidth={isActive ? 2.2 : 1.8}
                   className={cn('transition-colors', isActive ? 'text-lune-300' : 'text-white/45')}
                 />
+                {item.path === '/messages' && unreadMessages > 0 && (
+                  <span aria-label={unreadMessages + ' unread'} className='absolute -top-1.5 -right-2.5 min-w-[1rem] rounded-full bg-lune-500 px-1 text-center text-[10px] font-semibold leading-4 text-white'>{unreadMessages > 99 ? '99+' : unreadMessages}</span>
+                )}
                 {item.path === '/notifications' && unreadCount > 0 && (
                   <span className="absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-lune-400 ring-2 ring-[hsl(260_35%_7%)]" />
                 )}

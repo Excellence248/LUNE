@@ -92,7 +92,7 @@ export const PushBanner = () => {
   if (!user || hidden || state !== 'off') return null;
   const dismiss = () => { setHidden(true); try { localStorage.setItem(DISMISSED, '1'); } catch { /* private mode */ } };
   return (
-    <div className="mb-4 flex items-center gap-3 rounded-2xl border border-lune-400/25 bg-lune-500/10 px-4 py-3">
+    <div className="mx-4 mt-4 flex items-center gap-3 rounded-2xl border border-lune-400/25 bg-lune-500/10 px-4 py-3 md:mx-10 xl:mx-auto xl:w-full xl:max-w-3xl">
       <Bell size={18} className="shrink-0 text-lune-300" />
       <p className="min-w-0 flex-1 text-sm text-white/80">Get notified about messages and calls, even when Lune is closed.</p>
       <button disabled={busy} onClick={() => void enable().then(ok => { if (ok) showSuccess('Notifications are on.'); })} className="lune-btn h-8 shrink-0 px-4 text-xs">Turn on</button>

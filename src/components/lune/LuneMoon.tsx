@@ -40,9 +40,11 @@ export interface LuneMoonProps {
   /** Accessible label; decorative when omitted. */
   label?: string;
   onBoop?: () => void;
+  /** Close one eye in a happy wink (the moon's left eye, on our right). */
+  wink?: boolean;
 }
 
-const LuneMoon = ({ className, glow = true, tilt = 12, boop = false, float = false, label, onBoop }: LuneMoonProps) => {
+const LuneMoon = ({ className, glow = true, tilt = 12, boop = false, float = false, label, onBoop, wink = false }: LuneMoonProps) => {
   const uid = useId().replace(/:/g, '');
   const rootRef = useRef<HTMLSpanElement>(null);
   const tiltRef = useRef<HTMLSpanElement>(null);
@@ -160,6 +162,7 @@ const LuneMoon = ({ className, glow = true, tilt = 12, boop = false, float = fal
         boop && 'cursor-pointer',
         blinking && 'is-blinking',
         happy && 'is-happy',
+        wink && 'is-winking',
         className,
       )}
     >
@@ -195,7 +198,7 @@ const LuneMoon = ({ className, glow = true, tilt = 12, boop = false, float = fal
                 </defs>
 
                 {EYES.map((e, i) => (
-                  <g key={i}>
+                  <g key={i} className={i === 1 ? 'lune-wink-eye' : undefined}>
                     {/* Skin patch hides the painted eye while blinking / squinting. */}
                     <ellipse cx={e.cx} cy={e.cy} rx={SOCKET.rx + 4} ry={SOCKET.ry + 4} fill={`url(#${uid}-skin)`} filter={`url(#${uid}-soft)`} />
                     <g className="lune-eye">

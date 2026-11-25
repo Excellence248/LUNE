@@ -13,6 +13,11 @@ import { CallProvider } from "@/context/CallContext";
 import CallOverlay from "./CallOverlay";
 import AppBackground from "./AppBackground";
 import CosmicFX from "./CosmicFX";
+import OpeningSplash from "./OpeningSplash";
+import { useReferralClaim } from "@/hooks/useReferral";
+
+/** Hooks that need the signed-in member but draw nothing. */
+const Background = () => { useReferralClaim(); return null; };
 
 const queryClient = new QueryClient();
 
@@ -27,8 +32,10 @@ export const AppWrapper = ({ children }: { children: React.ReactNode }) => {
               <CallProvider>
                 <AppBackground />
                 <CosmicFX />
+                <Background />
                 {children}
                 <CallOverlay />
+                <OpeningSplash />
               </CallProvider>
               <Toaster />
               <Sonner />

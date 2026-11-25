@@ -4,8 +4,10 @@ import App from "./App.tsx";
 import ErrorBoundary from "./components/ErrorBoundary";
 import "./globals.css";
 import { registerServiceWorker } from "./hooks/usePush";
+import { rememberReferral } from "./hooks/useReferral";
 
 registerServiceWorker();
+rememberReferral();
 
 // Solana libraries expect a global Buffer in the browser
 (window as unknown as { Buffer: typeof Buffer }).Buffer ??= Buffer;

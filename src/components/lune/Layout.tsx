@@ -23,9 +23,10 @@ const Layout = ({ children, className, noPadding = false }: LayoutProps) => {
       <Sidebar />
       <main className="relative lg:pl-72 min-h-screen flex flex-col w-full pb-28 lg:pb-0">
         <TopBar />
+        {/* Outside the page body, so a page that lays itself out in columns is never squeezed by it. */}
+        <PushBanner />
         <div key={pageKey} className={cn('lune-page-enter flex-1 w-full max-w-[1680px] mx-auto', !noPadding && 'px-4 py-6 md:px-10 md:py-10', className)}>
           <Repost />
-          <PushBanner />
           {children}
         </div>
       </main>
