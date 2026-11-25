@@ -25,6 +25,17 @@ const playNotificationSound = () => {
   }
 };
 
+const setAppBadge = (count: number) => {
+  try {
+    if ('setAppBadge' in navigator) {
+      if (count > 0) (navigator as Navigator & { setAppBadge: (count: number) => Promise<void> }).setAppBadge(count);
+      else (navigator as Navigator & { clearAppBadge: () => Promise<void> }).clearAppBadge?.();
+    }
+  } catch {
+    // Badging API not supported or permission denied
+  }
+};
+
 export const useAccountNotifications = (userId: string | undefined) => {
   const currentUser = useRef(userId);
   currentUser.current = userId;
@@ -44,34 +55,35 @@ export const useAccountNotifications = (userId: string | undefined) => {
   const [markingOwner, setMarkingOwner] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-      if (!userId || currentUser.current !== userId) return;
-      const request = ++requestNumber.current;
-      const limit = visibleCount.current;
-      setLoading(true);
-      try {
-        const data = await api<{ items: Notification[]; hasMore: boolean; unread: number }>(`/api/notifications?limit=${limit}`);
-        if (currentUser.current !== userId || request !== requestNumber.current) return;
-        loadedCount.current = limit;
-        const newIds = new Set(data.items.map(n => n.id));
-        const hadPrevious = previousIds.current.size > 0;
-        const newNotifications = data.items.filter(n => !previousIds.current.has(n.id));
-        previousIds.current = newIds;
-        setNotifications(data.items);
-        setUnreadCount(data.unread);
-        setOwnerId(userId);
-        setHasMore(data.hasMore);
-        setError(null);
-        if (hadPrevious && newNotifications.length > 0) {
-          playNotificationSound();
+        if (!userId || currentUser.current !== userId) return;
+        const request = ++requestNumber.current;
+        const limit = visibleCount.current;
+        setLoading(true);
+        try {
+          const data = await api<{ items: Notification[]; hasMore: boolean; unread: number }>(`/api/notifications?limit=${limit}`);
+          if (currentUser.current !== userId || request !== requestNumber.current) return;
+          loadedCount.current = limit;
+          const newIds = new Set(data.items.map(n => n.id));
+          const hadPrevious = previousIds.current.size > 0;
+          const newNotifications = data.items.filter(n => !previousIds.current.has(n.id));
+          previousIds.current = newIds;
+          setNotifications(data.items);
+          setUnreadCount(data.unread);
+          setAppBadge(data.unread);
+          setOwnerId(userId);
+          setHasMore(data.hasMore);
+          setError(null);
+          if (hadPrevious && newNotifications.length > 0) {
+            playNotificationSound();
+          }
+        } catch (error) {
+              if (currentUser.current === userId && request === requestNumber.current) {
+                setError(error instanceof ApiError ? error.message : 'Notifications could not be refreshed. Please retry.');
+              }
+        } finally {
+          if (currentUser.current === userId && request === requestNumber.current) setLoading(false);
         }
-      } catch (error) {
-            if (currentUser.current === userId && request === requestNumber.current) {
-              setError(error instanceof ApiError ? error.message : 'Notifications could not be refreshed. Please retry.');
-            }
-      } finally {
-        if (currentUser.current === userId && request === requestNumber.current) setLoading(false);
-      }
-    }, [userId]);
+      }, [userId]);
 
   useEffect(() => {
       requestNumber.current += 1;
@@ -82,6 +94,7 @@ export const useAccountNotifications = (userId: string | undefined) => {
       setOwnerId(undefined);
       setNotifications([]);
       setUnreadCount(0);
+      setAppBadge(0);
       setHasMore(false);
       setLoadingMore(false);
       setMarkingOwner(null);
@@ -110,24 +123,28 @@ export const useAccountNotifications = (userId: string | undefined) => {
   };
 
   const markAsRead = useCallback(async (ids?: string[]) => {
-      if (!userId || currentUser.current !== userId) throw new Error('Sign in to mark notifications read.');
-      if (ids?.length === 0 || markingUsers.current.has(userId)) return;
-      markingUsers.current.add(userId);
-      setMarkingOwner(userId);
-      try {
-        const data = await api<string[]>('/api/notifications/read', { method: 'POST', body: ids ? { ids } : {} });
-        if (currentUser.current !== userId) return;
-        requestNumber.current += 1;
-        const updated = new Set(data);
-        setNotifications(previous => previous.map(row => updated.has(row.id) ? { ...row, read: true } : row));
-        setUnreadCount(previous => Math.max(0, previous - updated.size));
-      } catch (error) {
-        if (currentUser.current === userId) throw error;
-      } finally {
-        markingUsers.current.delete(userId);
-        if (currentUser.current === userId) setMarkingOwner(null);
-      }
-    }, [userId]);
+        if (!userId || currentUser.current !== userId) throw new Error('Sign in to mark notifications read.');
+        if (ids?.length === 0 || markingUsers.current.has(userId)) return;
+        markingUsers.current.add(userId);
+        setMarkingOwner(userId);
+        try {
+          const data = await api<string[]>('/api/notifications/read', { method: 'POST', body: ids ? { ids } : {} });
+          if (currentUser.current !== userId) return;
+          requestNumber.current += 1;
+          const updated = new Set(data);
+          setNotifications(previous => previous.map(row => updated.has(row.id) ? { ...row, read: true } : row));
+          setUnreadCount(previous => {
+            const next = Math.max(0, previous - updated.size);
+            setAppBadge(next);
+            return next;
+          });
+        } catch (error) {
+          if (currentUser.current === userId) throw error;
+        } finally {
+          markingUsers.current.delete(userId);
+          if (currentUser.current === userId) setMarkingOwner(null);
+        }
+      }, [userId]);
 
   const ready = !!userId && ownerId === userId;
   return {
