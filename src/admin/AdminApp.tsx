@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Toaster } from '@/components/ui/sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AuditLog from './AuditLog';
+import Communities from './Communities';
 import Content from './Content';
 import Members from './Members';
 import Overview from './Overview';
@@ -149,12 +150,14 @@ const AdminApp = () => {
               <TabsTrigger value="reports">Reports</TabsTrigger>
               <TabsTrigger value="members">Members</TabsTrigger>
               <TabsTrigger value="content">Content</TabsTrigger>
+              <TabsTrigger value="communities">Communities</TabsTrigger>
               {can('audit.read') && <TabsTrigger value="audit">Audit log</TabsTrigger>}
             </TabsList>
             <TabsContent value="overview"><Overview /></TabsContent>
             <TabsContent value="reports"><Reports can={can} /></TabsContent>
             <TabsContent value="members"><Members can={can} /></TabsContent>
             <TabsContent value="content"><Content canRemove={can('content.remove_any')} /></TabsContent>
+            <TabsContent value="communities"><Communities canRemove={can('content.remove_any')} /></TabsContent>
             {can('audit.read') && <TabsContent value="audit"><AuditLog /></TabsContent>}
           </Tabs>
         </main>

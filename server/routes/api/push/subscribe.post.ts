@@ -3,6 +3,7 @@ import { HTTPError, readBody } from 'nitro/h3';
 import { requireViewer } from '../../../utils/auth';
 import { sql } from '../../../utils/db';
 import { rateLimit } from '../../../utils/limits';
+import { isPushEndpoint } from '../../../utils/push';
 
 interface Body { endpoint?: unknown; keys?: { p256dh?: unknown; auth?: unknown } }
 
@@ -15,7 +16,7 @@ export default defineHandler(async (event) => {
   const { endpoint } = body;
   const p256dh = body.keys?.p256dh;
   const auth = body.keys?.auth;
-  if (typeof endpoint !== 'string' || endpoint.length > 1000 || !/^https:\/\//.test(endpoint) || typeof p256dh !== 'string' || typeof auth !== 'string' || p256dh.length > 200 || auth.length > 100) {
+  if (typeof endpoint !== 'string' || endpoint.length > 1000 || !isPushEndpoint(endpoint) || typeof p256dh !== 'string' || typeof auth !== 'string' || p256dh.length > 200 || auth.length > 100) {
     throw new HTTPError('That device could not be registered.', { status: 400 });
   }
   await sql`

@@ -10,6 +10,18 @@ const b64 = (data: Buffer) => data.toString('base64url');
 export const pushPublicKey = () => process.env.VAPID_PUBLIC_KEY || '';
 export const pushConfigured = () => !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
 
+// Only the browsers' own push services. Anything else could be used to make this server send requests to
+// an address of someone's choosing.
+const PUSH_HOSTS = [/^fcm\.googleapis\.com$/, /^updates\.push\.services\.mozilla\.com$/, /^web\.push\.apple\.com$/, /^[a-z0-9.-]+\.notify\.windows\.com$/];
+export const isPushEndpoint = (value: string) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.port && !url.username && !url.password && PUSH_HOSTS.some(host => host.test(url.hostname));
+  } catch {
+    return false;
+  }
+};
+
 let signingKey: ReturnType<typeof createPrivateKey> | null = null;
 const vapidKey = () => {
   if (signingKey) return signingKey;
@@ -81,6 +93,8 @@ export const pushTo = async (userId: string, message: PushMessage) => {
         subs = await everyDevice();
       }
     } else subs = await everyDevice();
+    // Saved before the allow-list existed? Never send there.
+    subs = subs.filter(sub => isPushEndpoint(sub.endpoint as string));
     if (!subs.length) return;
     const payload = Buffer.from(JSON.stringify({ ...message, body: message.body.slice(0, 140) }));
     const gone: string[] = [];

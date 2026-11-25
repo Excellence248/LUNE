@@ -69,7 +69,7 @@ export default defineHandler(async (event) => {
   }
 
   // Quote and poll (both need the bookmarks/quotes/polls migration).
-  const quoteOf = typeof body.quote_of === 'string' && /^[0-9a-f-]{36}$/.test(body.quote_of) ? body.quote_of : null;
+  const quoteOf = typeof body.quote_of === 'string' && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(body.quote_of) ? body.quote_of : null;
   if (body.quote_of != null && !quoteOf) throw new HTTPError('Invalid quote.', { status: 400 });
   let poll: { options: string[]; hours: number } | null = null;
   if (body.poll != null) {
