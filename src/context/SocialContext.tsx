@@ -36,6 +36,11 @@ export interface Reply {
   content: string;
   created_at: string;
   profiles?: Pick<PublicProfile, 'username' | 'display_name' | 'avatar_url' | 'wallet_address'>;
+  /** The reply this one answers, and that reply's author. */
+  parent_id?: string | null;
+  reply_to_username?: string | null;
+  /** Who liked this reply. */
+  likes?: { user_id: string }[];
 }
 
 export interface Post {
@@ -105,7 +110,7 @@ interface SocialContextType {
   publish: (parts: PostPart[], options?: { community?: string; onProgress?: (done: number, total: number) => void }) => Promise<Post>;
   toggleLike: (postId: string) => Promise<boolean>;
   toggleRepost: (postId: string) => Promise<boolean>;
-  addComment: (postId: string, content: string) => Promise<Reply>;
+  addComment: (postId: string, content: string, parentId?: string | null) => Promise<Reply>;
   followUser: (targetUserId: string) => Promise<void>;
   unfollowUser: (targetUserId: string) => Promise<void>;
   isFollowing: (targetUserId: string) => boolean;
@@ -307,7 +312,7 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
     } finally { busyRelations.current.delete(key); }
   };
 
-  const addComment = async (postId: string, content: string): Promise<Reply> => {
+  const addComment = async (postId: string, content: string, parentId?: string | null): Promise<Reply> => {
     const author = requireAccount();
     const text = content.trim();
     if (!text || text.length > 1000) throw new Error('Replies must contain 1–1,000 characters.');
@@ -315,7 +320,7 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
     if (busyRelations.current.has(key)) throw new Error('Your reply is already being saved.');
     busyRelations.current.add(key);
     try {
-      const reply = await api<Reply>(`/api/posts/${postId}/replies`, { method: 'POST', body: { content: text } });
+      const reply = await api<Reply>(`/api/posts/${postId}/replies`, { method: 'POST', body: { content: text, ...(parentId ? { parent_id: parentId } : {}) } });
       requestNumber.current += 1;
       setPosts(previous => previous.map(post => post.id === postId ? { ...post, replies: [...(post.replies || []).filter(row => row.id !== reply.id), reply] } : post));
       await fetchPosts();

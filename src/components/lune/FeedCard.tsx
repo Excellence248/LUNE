@@ -17,6 +17,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { showError, showSuccess } from '@/utils/toast';
 import { shortWalletAddress } from '@/lib/solana-wallet';
 import { displayNameOf } from '@/lib/names';
+import { api } from '@/lib/api';
 
 interface FeedCardProps {
   post: Post & { repostedBy?: string };
@@ -112,6 +113,10 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
   const [likeOverride, setLikeOverride] = useState<{ userId: string; active: boolean } | null>(null);
   const [repostOverride, setRepostOverride] = useState<{ userId: string; active: boolean } | null>(null);
   const [savedReplies, setSavedReplies] = useState<Reply[]>([]);
+  // Which reply the box is answering (null: the post itself), and likes on replies changed here.
+  const [replyTarget, setReplyTarget] = useState<Reply | null>(null);
+  const [replyLikes, setReplyLikes] = useState<Record<string, { active: boolean; count: number }>>({});
+  const replyBox = useRef<HTMLInputElement>(null);
   const busy = useRef(false);
 
   useEffect(() => { setLikeOverride(null); }, [sourcePost.likes, currentUser?.id]);
@@ -158,12 +163,42 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
     e.preventDefault();
     if (!commentInput.trim() || !currentUser) return;
     let reply: Reply | undefined;
-    if (await handleAction(async () => { reply = await addComment(post.id, commentInput); })) {
+    if (await handleAction(async () => { reply = await addComment(post.id, commentInput, replyTarget?.id); })) {
       const savedReply = reply;
       if (savedReply) setSavedReplies(previous => [...previous, savedReply]);
       setCommentInput('');
+      setReplyTarget(null);
     }
   };
+
+  const answer = (reply: Reply) => {
+    setReplyTarget(reply);
+    setShowComments(true);
+    requestAnimationFrame(() => replyBox.current?.focus());
+  };
+
+  const likeReply = async (reply: Reply) => {
+    if (!currentUser) return;
+    try {
+      const result = await api<{ active: boolean; count: number }>(`/api/replies/${reply.id}/like`, { method: 'POST', body: {} });
+      setReplyLikes(previous => ({ ...previous, [reply.id]: result }));
+    } catch (error) {
+      showError(error instanceof Error ? error.message : 'Your like could not be saved. Please try again.');
+    }
+  };
+
+  // Replies in conversation order: each reply to the post, then everything that answers it (at any depth).
+  const threaded = (() => {
+    const list = post.replies ?? [];
+    const byId = new Map(list.map(reply => [reply.id, reply]));
+    const rootOf = (reply: Reply) => {
+      let current = reply;
+      for (let hops = 0; current.parent_id && byId.has(current.parent_id) && hops < 50; hops++) current = byId.get(current.parent_id) as Reply;
+      return current.id;
+    };
+    const tops = list.filter(reply => !reply.parent_id || !byId.has(reply.parent_id));
+    return tops.flatMap(top => [{ reply: top, nested: false }, ...list.filter(reply => reply.id !== top.id && rootOf(reply) === top.id).map(reply => ({ reply, nested: true }))]);
+  })();
 
   const navigateToProfile = (username?: string) => {
     if (username) navigate(`/profile/${encodeURIComponent(username)}`);
@@ -340,9 +375,12 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
                 {!initialCommentsOpen && <Link to={`/post/${post.id}`} className="text-lune-300 hover:underline">Open post</Link>}
               </div>
               <div className="max-h-[28rem] space-y-3 overflow-y-auto pr-1">
-              {post.replies?.length ? (
-                post.replies.map(reply => (
-                  <div key={reply.id} className="flex gap-2.5">
+              {threaded.length ? (
+                threaded.map(({ reply, nested }) => {
+                  const liked = replyLikes[reply.id]?.active ?? !!(currentUser && reply.likes?.some(like => like.user_id === currentUser.id));
+                  const likeCount = replyLikes[reply.id]?.count ?? reply.likes?.length ?? 0;
+                  return (
+                  <div key={reply.id} className={cn('flex gap-2.5', nested && 'ml-4 border-l border-white/10 pl-3')}>
                     <button onClick={() => navigateToProfile(reply.profiles?.username)} className="shrink-0 h-fit">
                       <Avatar className="w-7 h-7 ring-1 ring-white/10">
                         <AvatarImage src={reply.profiles?.avatar_url} />
@@ -370,25 +408,41 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
                           )
                         )}
                       </div>
-                      <p className="selectable whitespace-pre-wrap text-sm text-white/70 leading-relaxed break-words">{reply.content}</p>
+                      {nested && reply.reply_to_username && <p className="text-[11px] text-white/35">Replying to <button onClick={() => navigateToProfile(reply.reply_to_username ?? undefined)} className="text-lune-300 hover:underline">@{reply.reply_to_username}</button></p>}
+                      <p className="selectable whitespace-pre-wrap text-sm text-white/70 leading-relaxed break-words">{renderContent(reply.content, goTo)}</p>
+                      <div className="mt-1 flex items-center gap-4 text-[11px] text-white/40">
+                        <button type="button" disabled={!currentUser} onClick={() => answer(reply)} aria-label={`Reply to @${reply.profiles?.username ?? 'this reply'}`} className="flex items-center gap-1 hover:text-lune-300 disabled:opacity-50"><MessageCircle size={13} />Reply</button>
+                        <button type="button" disabled={!currentUser} onClick={() => void likeReply(reply)} aria-pressed={liked} aria-label={liked ? 'Unlike reply' : 'Like reply'} className={cn('flex items-center gap-1 transition-colors disabled:opacity-50', liked ? 'text-pink-400' : 'hover:text-pink-400')}>
+                          <Heart size={13} className={cn(liked && 'fill-current')} />{likeCount > 0 && <span className="tabular-nums">{likeCount}</span>}
+                        </button>
+                      </div>
                     </div>
                   </div>
-                ))
+                  );
+                })
               ) : (
                 <p className="text-xs text-white/35 px-1">No replies yet.</p>
               )}
               </div>
 
               {currentUser ? (
-                <form onSubmit={handleComment} className="flex gap-2 pt-1">
+                <form onSubmit={handleComment} className="space-y-1.5 pt-1">
+                  {replyTarget && (
+                    <p className="flex items-center gap-2 px-1 text-xs text-white/50">
+                      Replying to <span className="font-semibold text-lune-300">@{replyTarget.profiles?.username}</span>
+                      <button type="button" onClick={() => setReplyTarget(null)} aria-label="Cancel replying to this reply" className="ml-auto text-white/40 hover:text-white">✕</button>
+                    </p>
+                  )}
+                  <div className="flex gap-2">
                   <input
+                    ref={replyBox}
                     type="text"
                     value={commentInput}
                     disabled={pending}
                     maxLength={1000}
                     aria-label="Write a public reply"
                     onChange={e => setCommentInput(e.target.value)}
-                    placeholder="Post your public reply"
+                    placeholder={replyTarget ? `Reply to @${replyTarget.profiles?.username ?? 'them'}` : 'Post your public reply'}
                     className="lune-input rounded-full px-4 py-2"
                   />
                   <button
@@ -399,6 +453,7 @@ const FeedCard = ({ post: sourcePost, initialCommentsOpen = false }: FeedCardPro
                   >
                     <SendHorizontal size={15} />
                   </button>
+                  </div>
                 </form>
               ) : (
                 <p className="text-xs text-white/35 px-1"><Link to="/signin" className="text-lune-300 hover:underline">Log in</Link> to reply.</p>
